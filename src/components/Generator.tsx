@@ -1,5 +1,5 @@
-import { createSignal, onMount } from 'solid-js'
-import bwipjs from 'bwip-js'
+import { createSignal } from 'solid-js'
+import bwipjs from 'bwip-js/browser'
 
 export default function Generator() {
   let canvasRef: HTMLCanvasElement | undefined
