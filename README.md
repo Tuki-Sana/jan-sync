@@ -2,7 +2,7 @@
 
 ドラッグストア・小売業の棚前作業を想定した、JANコードのスキャン・管理・バーコード生成 PWA。
 
-スマホのカメラで JAN コードを読み取り、名前・定価・売価を付けて IndexedDB に保存。生成タブではバーコードを一括出力、一覧タブで横断検索・CSV エクスポートができる。
+スマホのカメラで JAN コードを読み取り、名前・個数・定価・売価を付けて IndexedDB に保存。生成タブではバーコードを一括出力、一覧タブで横断検索・CSV エクスポートができる。7日以上前の古いリストには警告バッジを表示。
 
 ---
 
@@ -93,7 +93,7 @@ pnpm release:major   # X.0.0
 ```
 IndexedDB: jan-sync
 ├── lists   { id, name, createdAt }
-└── scans   { id, listId, jan, name, retailPrice?, salePrice?, scannedAt }
+└── scans   { id, listId, jan, name, quantity, retailPrice?, salePrice?, scannedAt }
 ```
 
 全データはデバイス内のみ。サーバーへの送信なし。
