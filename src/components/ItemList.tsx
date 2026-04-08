@@ -3,10 +3,11 @@ import { type ScannedItem, type JanList, loadAllItems, removeItem, saveItem, tax
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 function exportCSV(items: ScannedItem[], listMap: Record<string, string>) {
-  const headers = ['JAN', '名前', 'リスト', '定価(税抜)', '定価(税込)', '売価(税抜)', '売価(税込)', 'スキャン日時']
+  const headers = ['JAN', '名前', '個数', 'リスト', '定価(税抜)', '定価(税込)', '売価(税抜)', '売価(税込)', 'スキャン日時']
   const rows = items.map((i) => [
     i.jan,
     i.name,
+    i.quantity ?? 1,
     listMap[i.listId] ?? '',
     i.retailPrice ?? '',
     i.retailPrice !== undefined ? taxIn(i.retailPrice) : '',
@@ -194,6 +195,35 @@ export default function ItemList(props: { lists: JanList[] }) {
                             placeholder="名前を入力..."
                             class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
                           />
+                        </div>
+
+                        {/* 個数 */}
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs text-slate-500 shrink-0">個数</span>
+                          <div class="flex items-center rounded-xl border border-slate-200 overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => updateField(item.id, { quantity: Math.max(1, (item.quantity ?? 1) - 1) })}
+                              class="h-9 w-9 flex items-center justify-center text-base font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                              aria-label="個数を減らす"
+                            >－</button>
+                            <input
+                              type="text"
+                              inputmode="numeric"
+                              value={item.quantity ?? 1}
+                              onBlur={(e) => {
+                                const v = parseInt(e.currentTarget.value, 10)
+                                updateField(item.id, { quantity: isNaN(v) || v < 1 ? 1 : v })
+                              }}
+                              class="w-10 h-9 border-x border-slate-200 text-center text-sm font-semibold text-slate-800 focus:outline-none focus:bg-blue-50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateField(item.id, { quantity: (item.quantity ?? 1) + 1 })}
+                              class="h-9 w-9 flex items-center justify-center text-base font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                              aria-label="個数を増やす"
+                            >＋</button>
+                          </div>
                         </div>
 
                         {/* 価格 */}

@@ -121,6 +121,7 @@ export default function Scanner(props: { listId: string }) {
       listId: props.listId,
       jan,
       name: '',
+      quantity: 1,
       scannedAt: Date.now(),
     }
     await saveItem(item)
@@ -280,6 +281,35 @@ export default function Scanner(props: { listId: string }) {
                   onBlur={(e) => updateField(item.id, { name: e.currentTarget.value })}
                   class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
                 />
+
+                {/* 個数 */}
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-slate-500 shrink-0">個数</span>
+                  <div class="flex items-center rounded-xl border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => updateField(item.id, { quantity: Math.max(1, (item.quantity ?? 1) - 1) })}
+                      class="min-h-10 w-10 flex items-center justify-center text-lg font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                      aria-label="個数を減らす"
+                    >－</button>
+                    <input
+                      type="text"
+                      inputmode="numeric"
+                      value={item.quantity ?? 1}
+                      onBlur={(e) => {
+                        const v = parseInt(e.currentTarget.value, 10)
+                        updateField(item.id, { quantity: isNaN(v) || v < 1 ? 1 : v })
+                      }}
+                      class="w-12 min-h-10 border-x border-slate-200 text-center text-base font-semibold text-slate-800 focus:outline-none focus:bg-blue-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => updateField(item.id, { quantity: (item.quantity ?? 1) + 1 })}
+                      class="min-h-10 w-10 flex items-center justify-center text-lg font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                      aria-label="個数を増やす"
+                    >＋</button>
+                  </div>
+                </div>
 
                 {/* 価格 */}
                 <div class="grid grid-cols-2 gap-3">

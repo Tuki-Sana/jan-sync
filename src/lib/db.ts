@@ -11,6 +11,7 @@ export interface ScannedItem {
   listId: string
   jan: string
   name: string
+  quantity: number     // 個数（デフォルト1）
   retailPrice?: number // 定価(税抜)
   salePrice?: number   // 売価(税抜)
   scannedAt: number

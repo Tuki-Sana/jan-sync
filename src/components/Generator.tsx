@@ -136,7 +136,7 @@ export default function Generator(props: { listId: string }) {
     const valid: ScannedItem[] = []
     lines.forEach((line) => {
       if (/^\d{8}$|^\d{13}$/.test(line)) {
-        valid.push({ id: crypto.randomUUID(), listId: '', jan: line, name: '', scannedAt: 0 })
+        valid.push({ id: crypto.randomUUID(), listId: '', jan: line, name: '', quantity: 1, scannedAt: 0 })
       } else {
         errors.push(`「${line}」は無効なコードです`)
       }
