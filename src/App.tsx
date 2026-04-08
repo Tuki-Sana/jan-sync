@@ -7,6 +7,12 @@ import { type JanList, loadLists, saveList, deleteList, renameList } from './lib
 
 type Tab = 'scanner' | 'generator' | 'list'
 
+const OLD_LIST_MS = 7 * 24 * 60 * 60 * 1000
+
+function isOldList(list: JanList) {
+  return Date.now() - list.createdAt > OLD_LIST_MS
+}
+
 export default function App() {
   const [tab, setTab] = createSignal<Tab>('scanner')
   const [lists, setLists] = createSignal<JanList[]>([])
@@ -103,8 +109,11 @@ export default function App() {
             }}
             class="flex-1 flex min-h-12 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm shadow-sm active:scale-[0.98] transition-transform touch-manipulation"
           >
-            <span class="truncate font-medium text-slate-700">
+            <span class="truncate font-medium text-slate-700 flex items-center gap-1.5">
               {activeList()?.name ?? 'リストを選択'}
+              <Show when={activeList() && isOldList(activeList()!)}>
+                <span class="shrink-0 inline-block h-2 w-2 rounded-full bg-amber-400" title="作成から7日以上経過しています" />
+              </Show>
             </span>
             <span class="ml-1 shrink-0 text-slate-400">▾</span>
           </button>
@@ -178,9 +187,14 @@ export default function App() {
                                 fallback={
                                   <>
                                     <span
-                                      class="min-w-0 flex-1 truncate text-base cursor-pointer py-3"
+                                      class="min-w-0 flex-1 flex items-center gap-2 cursor-pointer py-3 truncate"
                                       onClick={() => { setActiveListId(list.id); setShowListMenu(false) }}
-                                    >{list.name}</span>
+                                    >
+                                      <span class="truncate text-base">{list.name}</span>
+                                      <Show when={isOldList(list)}>
+                                        <span class="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">7日超</span>
+                                      </Show>
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); startRename(list) }}
