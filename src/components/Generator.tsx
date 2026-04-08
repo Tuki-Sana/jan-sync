@@ -60,8 +60,12 @@ export default function Generator(props: { listId: string }) {
   const [selected, setSelected] = createSignal<Set<string>>(new Set<string>())
   const [generated, setGenerated] = createSignal<ScannedItem[]>([])
   const [loading, setLoading] = createSignal(true)
+  const [multiManual, setMultiManual] = createSignal(false)
   const [janCode, setJanCode] = createSignal('')
   const [manualError, setManualError] = createSignal('')
+  const [multiText, setMultiText] = createSignal('')
+  const [multiGenerated, setMultiGenerated] = createSignal<ScannedItem[]>([])
+  const [multiErrors, setMultiErrors] = createSignal<string[]>([])
 
   onMount(async () => {
     setDbItems(await loadByList(props.listId))
@@ -116,6 +120,21 @@ export default function Generator(props: { listId: string }) {
     } catch (e) {
       setManualError('生成に失敗しました: ' + (e as Error).message)
     }
+  }
+
+  function generateMulti() {
+    const lines = multiText().split('\n').map((l) => l.trim()).filter(Boolean)
+    const errors: string[] = []
+    const valid: ScannedItem[] = []
+    lines.forEach((line) => {
+      if (/^\d{8}$|^\d{13}$/.test(line)) {
+        valid.push({ id: crypto.randomUUID(), listId: '', jan: line, name: '', scannedAt: 0 })
+      } else {
+        errors.push(`「${line}」は無効なコードです`)
+      }
+    })
+    setMultiErrors(errors)
+    setMultiGenerated(valid)
   }
 
   const allSelected = () => dbItems().length > 0 && selected().size === dbItems().length
@@ -204,26 +223,76 @@ export default function Generator(props: { listId: string }) {
       {/* 手動入力モード */}
       <Show when={mode() === 'manual'}>
         <div class="flex flex-col gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-sm text-gray-600">JANコード（8桁 or 13桁）</label>
-            <input
-              type="text"
-              inputmode="numeric"
-              value={janCode()}
-              onInput={(e) => setJanCode(e.currentTarget.value.replace(/\D/g, '').slice(0, 13))}
-              onKeyDown={(e) => e.key === 'Enter' && generateManual()}
-              placeholder="例: 4901234567890"
-              class="w-full rounded-xl border border-gray-300 px-3 py-2.5 font-mono text-base focus:border-blue-500 focus:outline-none"
-              maxLength={13}
-            />
+          {/* 単数/複数トグル */}
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-600">複数入力</span>
+            <button
+              onClick={() => { setMultiManual(!multiManual()); setMultiGenerated([]); setMultiErrors([]) }}
+              class={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${multiManual() ? 'bg-blue-600' : 'bg-gray-200'}`}
+            >
+              <span class={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${multiManual() ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
           </div>
-          {manualError() && <p class="text-sm text-red-500">{manualError()}</p>}
-          <button onClick={generateManual} class="w-full rounded-xl bg-blue-600 py-3 text-sm font-medium text-white">
-            生成
-          </button>
-          <div class="flex min-h-28 items-center justify-center rounded-xl border border-gray-200 bg-white p-4">
-            <canvas ref={manualCanvasRef} />
-          </div>
+
+          {/* 1件モード */}
+          <Show when={!multiManual()}>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm text-gray-600">JANコード（8桁 or 13桁）</label>
+              <input
+                type="text"
+                inputmode="numeric"
+                value={janCode()}
+                onInput={(e) => setJanCode(e.currentTarget.value.replace(/\D/g, '').slice(0, 13))}
+                onKeyDown={(e) => e.key === 'Enter' && generateManual()}
+                placeholder="例: 4901234567890"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 font-mono text-base focus:border-blue-500 focus:outline-none"
+                maxLength={13}
+              />
+            </div>
+            {manualError() && <p class="text-sm text-red-500">{manualError()}</p>}
+            <button onClick={generateManual} class="w-full rounded-xl bg-blue-600 py-3 text-sm font-medium text-white">
+              生成
+            </button>
+            <div class="flex min-h-28 items-center justify-center rounded-xl border border-gray-200 bg-white p-4">
+              <canvas ref={manualCanvasRef} />
+            </div>
+          </Show>
+
+          {/* 複数モード */}
+          <Show when={multiManual()}>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm text-gray-600">1行に1コード入力</label>
+              <textarea
+                value={multiText()}
+                onInput={(e) => setMultiText(e.currentTarget.value)}
+                placeholder={'4901234567890\n49012345678901\n...'}
+                rows={6}
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 font-mono text-sm focus:border-blue-500 focus:outline-none resize-none"
+              />
+            </div>
+            <Show when={multiErrors().length > 0}>
+              <div class="rounded-lg bg-red-50 px-3 py-2">
+                <For each={multiErrors()}>
+                  {(e) => <p class="text-xs text-red-500">{e}</p>}
+                </For>
+              </div>
+            </Show>
+            <button
+              onClick={generateMulti}
+              disabled={!multiText().trim()}
+              class="w-full rounded-xl bg-blue-600 py-3 text-sm font-medium text-white disabled:opacity-40"
+            >
+              まとめて生成
+            </button>
+            <Show when={multiGenerated().length > 0}>
+              <div class="flex flex-col gap-3">
+                <h3 class="text-sm font-semibold text-gray-500">生成結果 ({multiGenerated().length}件)</h3>
+                <For each={multiGenerated()}>
+                  {(item) => <BarcodeCard item={item} />}
+                </For>
+              </div>
+            </Show>
+          </Show>
         </div>
       </Show>
     </div>
