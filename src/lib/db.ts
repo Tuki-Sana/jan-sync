@@ -74,6 +74,12 @@ export async function deleteList(id: string): Promise<void> {
 
 // ── アイテム操作 ────────────────────────────────────────
 
+export async function loadAllItems(): Promise<ScannedItem[]> {
+  const db = await getDB()
+  const items = await db.getAll(SCANS_STORE)
+  return items.sort((a: ScannedItem, b: ScannedItem) => b.scannedAt - a.scannedAt)
+}
+
 export async function loadByList(listId: string): Promise<ScannedItem[]> {
   const db = await getDB()
   const items = await db.getAllFromIndex(SCANS_STORE, 'listId', listId)
