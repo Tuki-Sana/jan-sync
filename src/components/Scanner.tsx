@@ -1,11 +1,6 @@
-import { createSignal, For, onCleanup } from 'solid-js'
+import { createSignal, For, onCleanup, onMount } from 'solid-js'
 import { readBarcodesFromImageFile } from 'zxing-wasm/reader'
-
-interface ScannedItem {
-  id: string
-  jan: string
-  name: string
-}
+import { type ScannedItem, loadAll, saveItem, removeItem, clearAll } from '../lib/db'
 
 export default function Scanner() {
   let videoRef: HTMLVideoElement | undefined
@@ -16,16 +11,20 @@ export default function Scanner() {
   const [error, setError] = createSignal('')
   const [items, setItems] = createSignal<ScannedItem[]>([])
   const [copiedId, setCopiedId] = createSignal('')
+  const [editingId, setEditingId] = createSignal('')
+  const [editJan, setEditJan] = createSignal('')
+
+  onMount(async () => {
+    setItems(await loadAll())
+  })
+
+  // ── カメラ制御 ──────────────────────────────────────────
 
   async function startCamera() {
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
       })
       if (videoRef) {
         videoRef.srcObject = stream
@@ -53,10 +52,7 @@ export default function Scanner() {
   }
 
   async function scanFrame() {
-    if (!videoRef || !canvasRef || videoRef.readyState < 2) {
-      scheduleFrame()
-      return
-    }
+    if (!videoRef || !canvasRef || videoRef.readyState < 2) { scheduleFrame(); return }
     const ctx = canvasRef.getContext('2d')
     if (!ctx) return
 
@@ -66,49 +62,69 @@ export default function Scanner() {
 
     canvasRef.toBlob(async (blob) => {
       if (!blob) { scheduleFrame(); return }
-      const file = new File([blob], 'frame.png', { type: 'image/png' })
       try {
-        const results = await readBarcodesFromImageFile(file, {
-          formats: ['EAN13', 'EAN8'],
-          tryHarder: true,
-          tryRotate: true,
-          tryInvert: true,
-          tryDownscale: true,
-        })
+        const results = await readBarcodesFromImageFile(
+          new File([blob], 'frame.png', { type: 'image/png' }),
+          { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
+        )
         if (results.length > 0) {
           navigator.vibrate?.(80)
-          addItem(results[0].text)
+          await addItem(results[0].text)
           stopCamera()
           return
         }
-      } catch {
-        // wasmロード前は無視
-      }
+      } catch { /* wasmロード前は無視 */ }
       scheduleFrame()
     }, 'image/png')
   }
 
-  function addItem(jan: string) {
-    // 直前と同じコードは追加しない
-    if (items()[0]?.jan === jan) {
-      startCamera()
-      return
-    }
-    setItems([{ id: crypto.randomUUID(), jan, name: '' }, ...items()])
+  // ── データ操作 ──────────────────────────────────────────
+
+  async function addItem(jan: string) {
+    if (items()[0]?.jan === jan) { startCamera(); return }
+    const item: ScannedItem = { id: crypto.randomUUID(), jan, name: '', scannedAt: Date.now() }
+    await saveItem(item)
+    setItems([item, ...items()])
   }
+
+  async function updateField(id: string, patch: Partial<ScannedItem>) {
+    const updated = items().map((item) => item.id === id ? { ...item, ...patch } : item)
+    setItems(updated)
+    const target = updated.find((i) => i.id === id)
+    if (target) await saveItem(target)
+  }
+
+  async function deleteItem(id: string) {
+    await removeItem(id)
+    setItems(items().filter((i) => i.id !== id))
+  }
+
+  async function deleteAll() {
+    await clearAll()
+    setItems([])
+  }
+
+  // ── JAN編集 ─────────────────────────────────────────────
+
+  function startEditJan(item: ScannedItem) {
+    setEditingId(item.id)
+    setEditJan(item.jan)
+  }
+
+  async function commitEditJan(id: string) {
+    const jan = editJan().trim()
+    if (/^\d{8}$|^\d{13}$/.test(jan)) {
+      await updateField(id, { jan })
+    }
+    setEditingId('')
+  }
+
+  // ── コピー ───────────────────────────────────────────────
 
   async function copyJan(item: ScannedItem) {
     await navigator.clipboard.writeText(item.jan)
     setCopiedId(item.id)
     setTimeout(() => setCopiedId(''), 2000)
-  }
-
-  function updateName(id: string, name: string) {
-    setItems(items().map((item) => (item.id === id ? { ...item, name } : item)))
-  }
-
-  function removeItem(id: string) {
-    setItems(items().filter((item) => item.id !== id))
   }
 
   onCleanup(() => stopCamera())
@@ -155,43 +171,72 @@ export default function Scanner() {
       {items().length > 0 && (
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-500">スキャン履歴</h3>
-            <button
-              onClick={() => setItems([])}
-              class="text-xs text-gray-400"
-            >
-              全件削除
-            </button>
+            <h3 class="text-sm font-semibold text-gray-500">スキャン履歴 ({items().length}件)</h3>
+            <button onClick={deleteAll} class="text-xs text-gray-400">全件削除</button>
           </div>
 
           <For each={items()}>
             {(item) => (
               <div class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm flex flex-col gap-2">
+
                 {/* JANコード行 */}
-                <div class="flex items-center gap-2">
-                  <button
-                    onClick={() => copyJan(item)}
-                    class="flex-1 text-left font-mono text-base font-bold text-blue-700"
-                  >
-                    {item.jan}
-                  </button>
-                  <span class="shrink-0 text-xs text-gray-400">
-                    {copiedId() === item.id ? 'コピー済み✓' : 'タップでコピー'}
-                  </span>
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    class="shrink-0 text-gray-300 text-lg leading-none"
-                  >
-                    ×
-                  </button>
-                </div>
+                {editingId() === item.id ? (
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputmode="numeric"
+                      value={editJan()}
+                      onInput={(e) => setEditJan(e.currentTarget.value.replace(/\D/g, '').slice(0, 13))}
+                      onKeyDown={(e) => e.key === 'Enter' && commitEditJan(item.id)}
+                      class="flex-1 rounded-lg border border-blue-400 px-2.5 py-1 font-mono text-base font-bold text-blue-700 focus:outline-none"
+                      autofocus
+                    />
+                    <button
+                      onClick={() => commitEditJan(item.id)}
+                      class="shrink-0 rounded-lg bg-blue-600 px-3 py-1 text-xs text-white"
+                    >
+                      確定
+                    </button>
+                    <button
+                      onClick={() => setEditingId('')}
+                      class="shrink-0 text-gray-400 text-sm"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <div class="flex items-center gap-2">
+                    <button
+                      onClick={() => copyJan(item)}
+                      class="flex-1 text-left font-mono text-base font-bold text-blue-700"
+                    >
+                      {item.jan}
+                    </button>
+                    <span class="shrink-0 text-xs text-gray-400">
+                      {copiedId() === item.id ? 'コピー済み✓' : 'タップでコピー'}
+                    </span>
+                    <button
+                      onClick={() => startEditJan(item)}
+                      class="shrink-0 text-gray-400 text-sm px-1"
+                      title="JANコードを修正"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      class="shrink-0 text-gray-300 text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
 
                 {/* 名前メモ */}
                 <input
                   type="text"
                   placeholder="名前を追加..."
                   value={item.name}
-                  onInput={(e) => updateName(item.id, e.currentTarget.value)}
+                  onBlur={(e) => updateField(item.id, { name: e.currentTarget.value })}
                   class="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
                 />
 
