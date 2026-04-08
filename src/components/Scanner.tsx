@@ -6,7 +6,7 @@ import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn 
 
 function IconPencil(props: { class?: string }) {
   return (
-    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
     </svg>
@@ -25,6 +25,15 @@ function IconTrash(props: { class?: string }) {
   )
 }
 
+function IconCopy(props: { class?: string }) {
+  return (
+    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  )
+}
+
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
   let canvasRef: HTMLCanvasElement | undefined
@@ -37,6 +46,7 @@ export default function Scanner(props: { listId: string }) {
   const [editingId, setEditingId] = createSignal('')
   const [editJan, setEditJan] = createSignal('')
   const [showClearConfirm, setShowClearConfirm] = createSignal(false)
+  const [pendingDeleteItemId, setPendingDeleteItemId] = createSignal<string | null>(null)
 
   onMount(async () => {
     setItems(await loadByList(props.listId))
@@ -140,6 +150,22 @@ export default function Scanner(props: { listId: string }) {
     setItems(items().filter((i) => i.id !== id))
   }
 
+  function pendingDeleteItem() {
+    const id = pendingDeleteItemId()
+    return id ? items().find((i) => i.id === id) : undefined
+  }
+
+  async function executeDeleteOne() {
+    const id = pendingDeleteItemId()
+    if (!id) return
+    await deleteItem(id)
+    setPendingDeleteItemId(null)
+  }
+
+  function cancelDeleteOne() {
+    setPendingDeleteItemId(null)
+  }
+
   async function executeClearAll() {
     await clearByList(props.listId)
     setItems([])
@@ -175,7 +201,9 @@ export default function Scanner(props: { listId: string }) {
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showClearConfirm()) cancelClearAll()
+      if (e.key !== 'Escape') return
+      if (pendingDeleteItemId()) cancelDeleteOne()
+      else if (showClearConfirm()) cancelClearAll()
     }
     window.addEventListener('keydown', onKey)
     onCleanup(() => window.removeEventListener('keydown', onKey))
@@ -234,42 +262,65 @@ export default function Scanner(props: { listId: string }) {
 
                 {/* JAN行 */}
                 <Show when={editingId() === item.id} fallback={
-                  <div class="flex items-center gap-2 min-h-12">
+                  <div class="flex items-start gap-2">
                     <button
                       type="button"
                       onClick={() => startEditJan(item)}
-                      class="shrink-0 min-h-12 min-w-12 flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 shadow-sm active:scale-95 active:bg-slate-100 touch-manipulation"
+                      class="mt-0.5 shrink-0 flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-blue-200/90 bg-gradient-to-b from-white to-blue-50/90 text-blue-700 shadow-[0_1px_2px_rgba(30,58,138,0.06)] ring-1 ring-blue-100/80 active:scale-[0.97] active:bg-blue-50/95 touch-manipulation"
                       aria-label="JANコードを編集"
                     >
-                      <IconPencil class="h-5 w-5" />
+                      <IconPencil class="h-5 w-5 shrink-0 opacity-90" />
                     </button>
                     <button
                       type="button"
                       onClick={() => copyJan(item)}
-                      class="flex-1 min-h-12 min-w-0 text-left rounded-xl px-2 -mx-1 active:bg-blue-50 active:scale-[0.99] transition-transform touch-manipulation"
+                      title={item.jan}
+                      class="flex min-w-0 flex-1 flex-col items-stretch gap-1 rounded-xl border border-transparent px-2 py-1 text-left -mx-1 active:border-blue-100/80 active:bg-blue-50/80 active:scale-[0.99] transition-[transform,background-color,border-color] touch-manipulation"
+                      aria-label={copiedId() === item.id ? 'コピー済み' : 'JANコードをコピー'}
                     >
-                      <p class="font-mono text-base font-bold text-blue-700">{item.jan}</p>
-                      <p class="text-xs text-slate-300">{formatDate(item.scannedAt)}</p>
+                      <p class="truncate font-mono text-base font-bold leading-tight text-blue-700">{item.jan}</p>
+                      <span class="text-xs text-slate-400">{formatDate(item.scannedAt)}</span>
+                      <span class="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                        <IconCopy class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        {copiedId() === item.id ? 'コピー済み✓' : 'タップでコピー'}
+                      </span>
                     </button>
-                    <span class="shrink-0 text-xs text-slate-400 max-w-[5.5rem] text-right">
-                      {copiedId() === item.id ? 'コピー済み✓' : 'タップでコピー'}
-                    </span>
-                    <button type="button" onClick={() => deleteItem(item.id)} class="shrink-0 min-h-12 min-w-12 flex items-center justify-center text-slate-300 text-xl leading-none rounded-xl active:scale-95 touch-manipulation" aria-label="削除">×</button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDeleteItemId(item.id)}
+                      class="mt-0.5 shrink-0 flex min-h-12 min-w-12 items-center justify-center rounded-xl border border-rose-200 bg-rose-50/90 text-rose-600 shadow-sm active:scale-95 active:bg-rose-100/90 touch-manipulation"
+                      aria-label="この履歴を削除"
+                    >
+                      <IconTrash class="h-5 w-5" />
+                    </button>
                   </div>
                 }>
-                  <div class="flex items-center gap-2">
-                    <div class="shrink-0 min-w-12" aria-hidden="true" />
+                  <div class="flex flex-col gap-2">
                     <input
                       type="text"
                       inputmode="numeric"
                       value={editJan()}
                       onInput={(e) => setEditJan(e.currentTarget.value.replace(/\D/g, '').slice(0, 13))}
                       onKeyDown={(e) => e.key === 'Enter' && commitEditJan(item.id)}
-                      class="flex-1 min-h-12 min-w-0 rounded-xl border-2 border-blue-400 px-3 font-mono text-base font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      class="w-full min-h-12 rounded-xl border-2 border-blue-400 px-3 font-mono text-base font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       autofocus
                     />
-                    <button type="button" onClick={() => commitEditJan(item.id)} class="shrink-0 min-h-12 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md active:scale-95 transition-transform touch-manipulation">確定</button>
-                    <button type="button" onClick={() => setEditingId('')} class="shrink-0 min-h-12 min-w-12 rounded-xl text-slate-400 text-lg active:scale-95 touch-manipulation">✕</button>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId('')}
+                        class="min-h-12 w-full rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-700 shadow-sm active:scale-[0.99] transition-transform touch-manipulation"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => commitEditJan(item.id)}
+                        class="min-h-12 w-full rounded-xl bg-blue-600 text-base font-semibold text-white shadow-md shadow-blue-600/20 active:scale-[0.99] transition-transform touch-manipulation"
+                      >
+                        確定
+                      </button>
+                    </div>
                   </div>
                 </Show>
 
@@ -282,16 +333,18 @@ export default function Scanner(props: { listId: string }) {
                   class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
                 />
 
-                {/* 個数 */}
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-medium text-slate-500 shrink-0">個数</span>
-                  <div class="flex items-center rounded-xl border border-slate-200 overflow-hidden">
+                {/* 個数（ラベル位置・高さ・枠線を価格フィールドに合わせる） */}
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-slate-500">個数</span>
+                  <div class="grid min-h-12 w-full grid-cols-3 divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                     <button
                       type="button"
                       onClick={() => updateField(item.id, { quantity: Math.max(1, (item.quantity ?? 1) - 1) })}
-                      class="min-h-10 w-10 flex items-center justify-center text-lg font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                      class="min-h-12 min-w-0 flex items-center justify-center text-xl font-bold text-slate-700 active:bg-slate-100 touch-manipulation"
                       aria-label="個数を減らす"
-                    >－</button>
+                    >
+                      －
+                    </button>
                     <input
                       type="text"
                       inputmode="numeric"
@@ -300,14 +353,16 @@ export default function Scanner(props: { listId: string }) {
                         const v = parseInt(e.currentTarget.value, 10)
                         updateField(item.id, { quantity: isNaN(v) || v < 1 ? 1 : v })
                       }}
-                      class="w-12 min-h-10 border-x border-slate-200 text-center text-base font-semibold text-slate-800 focus:outline-none focus:bg-blue-50"
+                      class="min-h-12 min-w-0 w-full bg-transparent px-1 text-center text-base font-semibold text-slate-800 focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => updateField(item.id, { quantity: (item.quantity ?? 1) + 1 })}
-                      class="min-h-10 w-10 flex items-center justify-center text-lg font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                      class="min-h-12 min-w-0 flex items-center justify-center text-xl font-bold text-slate-700 active:bg-slate-100 touch-manipulation"
                       aria-label="個数を増やす"
-                    >＋</button>
+                    >
+                      ＋
+                    </button>
                   </div>
                 </div>
 
@@ -361,6 +416,55 @@ export default function Scanner(props: { listId: string }) {
               </div>
             )}
           </For>
+        </div>
+      </Show>
+
+      {/* 1件削除の確認（中央モーダル） */}
+      <Show when={pendingDeleteItemId()}>
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            class="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+            aria-label="閉じる"
+            onClick={cancelDeleteOne}
+          />
+          <div
+            class="relative z-[61] w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/10"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-one-title"
+            aria-describedby="delete-one-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="delete-one-title" class="text-lg font-bold text-slate-800">
+              この履歴を削除しますか？
+            </h3>
+            <p id="delete-one-desc" class="mt-2 text-base text-slate-600 leading-relaxed">
+              <span class="font-mono font-semibold text-slate-800">{pendingDeleteItem()?.jan}</span>
+              を削除します。名前・価格などの入力内容も失われます。
+              <Show when={!!pendingDeleteItem()?.name?.trim()}>
+                <span class="mt-2 block text-slate-500">
+                  （{pendingDeleteItem()?.name}）
+                </span>
+              </Show>
+            </p>
+            <div class="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-700 shadow-sm active:scale-[0.99] transition-transform touch-manipulation"
+                onClick={cancelDeleteOne}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/20 active:scale-[0.98] transition-transform touch-manipulation"
+                onClick={() => void executeDeleteOne()}
+              >
+                削除する
+              </button>
+            </div>
+          </div>
         </div>
       </Show>
 

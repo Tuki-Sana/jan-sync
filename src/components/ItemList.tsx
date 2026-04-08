@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show, createMemo } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { type ScannedItem, type JanList, loadAllItems, removeItem, saveItem, taxIn } from '../lib/db'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
@@ -32,6 +32,9 @@ export default function ItemList(props: { lists: JanList[] }) {
   const [query, setQuery] = createSignal('')
   const [loading, setLoading] = createSignal(true)
   const [expandedId, setExpandedId] = createSignal<string | null>(null)
+  const [selectedIds, setSelectedIds] = createSignal<Set<string>>(new Set())
+  const [pendingDeleteOneId, setPendingDeleteOneId] = createSignal<string | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = createSignal(false)
 
   onMount(async () => {
     setItems(await loadAllItems())
@@ -62,10 +65,75 @@ export default function ItemList(props: { lists: JanList[] }) {
       .filter((g) => g.items.length > 0)
   })
 
+  /** 検索結果が変わったら、表示にいない ID は選択から外す（A案） */
+  createEffect(() => {
+    const visible = new Set(filtered().map((i) => i.id))
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)))
+      if (next.size === prev.size && [...next].every((id) => prev.has(id))) return prev
+      return next
+    })
+  })
+
+  const selectedInFilteredCount = createMemo(() =>
+    filtered().filter((i) => selectedIds().has(i.id)).length,
+  )
+
+  const allFilteredSelected = createMemo(() => {
+    const f = filtered()
+    return f.length > 0 && f.every((i) => selectedIds().has(i.id))
+  })
+
   async function deleteOne(id: string) {
     await removeItem(id)
     setItems((prev) => prev.filter((i) => i.id !== id))
     if (expandedId() === id) setExpandedId(null)
+  }
+
+  const pendingDeleteOneItem = createMemo(() => {
+    const id = pendingDeleteOneId()
+    return id ? items().find((i) => i.id === id) : undefined
+  })
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllFiltered() {
+    setSelectedIds(new Set(filtered().map((i) => i.id)))
+  }
+
+  function clearFilteredSelection() {
+    const visible = new Set(filtered().map((i) => i.id))
+    setSelectedIds((prev) => new Set([...prev].filter((id) => !visible.has(id))))
+  }
+
+  async function executeDeleteOne() {
+    const id = pendingDeleteOneId()
+    if (!id) return
+    await deleteOne(id)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    setPendingDeleteOneId(null)
+  }
+
+  async function executeBulkDelete() {
+    const ids = Array.from(selectedIds())
+    if (ids.length === 0) return
+    for (const id of ids) await removeItem(id)
+    setItems((prev) => prev.filter((i) => !ids.includes(i.id)))
+    setSelectedIds(new Set<string>())
+    setBulkDeleteOpen(false)
+    const ex = expandedId()
+    if (ex && ids.includes(ex)) setExpandedId(null)
   }
 
   async function updateField(id: string, patch: Partial<ScannedItem>) {
@@ -78,6 +146,16 @@ export default function ItemList(props: { lists: JanList[] }) {
   function toggleExpand(id: string) {
     setExpandedId((prev) => prev === id ? null : id)
   }
+
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (bulkDeleteOpen()) setBulkDeleteOpen(false)
+      else if (pendingDeleteOneId()) setPendingDeleteOneId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
+  })
 
   return (
     <div class="flex flex-col gap-4 p-4">
@@ -103,6 +181,45 @@ export default function ItemList(props: { lists: JanList[] }) {
         onInput={(e) => setQuery(e.currentTarget.value)}
         class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
       />
+
+      <Show when={!loading() && filtered().length > 0}>
+        <div class="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3 shadow-sm ring-1 ring-slate-900/5">
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <span class="min-w-0 shrink-0 text-sm text-slate-600">
+              表示中 <strong class="text-slate-800">{filtered().length}</strong> 件
+            </span>
+            <div class="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <Show when={!allFilteredSelected()}>
+                <button
+                  type="button"
+                  onClick={selectAllFiltered}
+                  class="min-h-10 shrink-0 rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 shadow-sm active:scale-[0.99] touch-manipulation"
+                >
+                  表示中の{filtered().length}件をすべて選択
+                </button>
+              </Show>
+              <Show when={selectedInFilteredCount() > 0}>
+                <button
+                  type="button"
+                  onClick={clearFilteredSelection}
+                  class="min-h-10 shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm active:scale-[0.99] touch-manipulation"
+                >
+                  表示中の選択を解除
+                </button>
+              </Show>
+            </div>
+          </div>
+          <Show when={selectedInFilteredCount() > 0}>
+            <button
+              type="button"
+              onClick={() => setBulkDeleteOpen(true)}
+              class="w-full min-h-11 rounded-xl border border-rose-200 bg-rose-50/90 py-2 text-sm font-semibold text-rose-800 shadow-sm active:scale-[0.99] touch-manipulation"
+            >
+              選択した {selectedInFilteredCount()} 件を削除
+            </button>
+          </Show>
+        </div>
+      </Show>
 
       <Show when={loading()}>
         <p class="text-center text-base text-slate-400">読み込み中...</p>
@@ -139,6 +256,17 @@ export default function ItemList(props: { lists: JanList[] }) {
                       class="flex min-h-14 items-center gap-3 px-3 py-2 cursor-pointer active:bg-slate-50 touch-manipulation"
                       onClick={() => toggleExpand(item.id)}
                     >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds().has(item.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          toggleSelect(item.id)
+                        }}
+                        class="h-5 w-5 shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600 touch-manipulation"
+                        aria-label={`${item.jan}を選択`}
+                      />
                       <div class="flex-1 min-w-0">
                         <p class="font-mono text-sm font-bold text-slate-800">{item.jan}</p>
                         <div class="flex items-center gap-2">
@@ -197,16 +325,18 @@ export default function ItemList(props: { lists: JanList[] }) {
                           />
                         </div>
 
-                        {/* 個数 */}
-                        <div class="flex items-center gap-2">
-                          <span class="text-xs text-slate-500 shrink-0">個数</span>
-                          <div class="flex items-center rounded-xl border border-slate-200 overflow-hidden">
+                        {/* 個数（スキャン履歴と同じ三等分グリッド） */}
+                        <div class="flex flex-col gap-1">
+                          <span class="text-xs font-medium text-slate-500">個数</span>
+                          <div class="grid min-h-12 w-full grid-cols-3 divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                             <button
                               type="button"
                               onClick={() => updateField(item.id, { quantity: Math.max(1, (item.quantity ?? 1) - 1) })}
-                              class="h-9 w-9 flex items-center justify-center text-base font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                              class="min-h-12 min-w-0 flex items-center justify-center text-xl font-bold text-slate-700 active:bg-slate-100 touch-manipulation"
                               aria-label="個数を減らす"
-                            >－</button>
+                            >
+                              －
+                            </button>
                             <input
                               type="text"
                               inputmode="numeric"
@@ -215,14 +345,16 @@ export default function ItemList(props: { lists: JanList[] }) {
                                 const v = parseInt(e.currentTarget.value, 10)
                                 updateField(item.id, { quantity: isNaN(v) || v < 1 ? 1 : v })
                               }}
-                              class="w-10 h-9 border-x border-slate-200 text-center text-sm font-semibold text-slate-800 focus:outline-none focus:bg-blue-50"
+                              class="min-h-12 min-w-0 w-full bg-transparent px-1 text-center text-base font-semibold text-slate-800 focus:outline-none"
                             />
                             <button
                               type="button"
                               onClick={() => updateField(item.id, { quantity: (item.quantity ?? 1) + 1 })}
-                              class="h-9 w-9 flex items-center justify-center text-base font-bold text-slate-500 active:bg-slate-100 touch-manipulation"
+                              class="min-h-12 min-w-0 flex items-center justify-center text-xl font-bold text-slate-700 active:bg-slate-100 touch-manipulation"
                               aria-label="個数を増やす"
-                            >＋</button>
+                            >
+                              ＋
+                            </button>
                           </div>
                         </div>
 
@@ -261,7 +393,7 @@ export default function ItemList(props: { lists: JanList[] }) {
                         {/* 削除 */}
                         <button
                           type="button"
-                          onClick={() => deleteOne(item.id)}
+                          onClick={() => setPendingDeleteOneId(item.id)}
                           class="w-full rounded-xl border border-rose-200 bg-rose-50 py-2 text-sm font-medium text-rose-600 active:bg-rose-100 touch-manipulation"
                         >
                           削除
@@ -275,6 +407,93 @@ export default function ItemList(props: { lists: JanList[] }) {
           </div>
         )}
       </For>
+
+      {/* 1件削除の確認 */}
+      <Show when={pendingDeleteOneId()}>
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            class="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+            aria-label="閉じる"
+            onClick={() => setPendingDeleteOneId(null)}
+          />
+          <div
+            class="relative z-[61] w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/10"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="itemlist-delete-one-title"
+            aria-describedby="itemlist-delete-one-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="itemlist-delete-one-title" class="text-lg font-bold text-slate-800">
+              この履歴を削除しますか？
+            </h3>
+            <p id="itemlist-delete-one-desc" class="mt-2 text-base text-slate-600 leading-relaxed">
+              <span class="font-mono font-semibold text-slate-800">{pendingDeleteOneItem()?.jan}</span>
+              を削除します。一覧・スキャン履歴の両方から消えます。
+            </p>
+            <div class="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-700 shadow-sm active:scale-[0.99] touch-manipulation"
+                onClick={() => setPendingDeleteOneId(null)}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/20 active:scale-[0.98] touch-manipulation"
+                onClick={() => void executeDeleteOne()}
+              >
+                削除する
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* 選択一括削除の確認 */}
+      <Show when={bulkDeleteOpen()}>
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            class="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+            aria-label="閉じる"
+            onClick={() => setBulkDeleteOpen(false)}
+          />
+          <div
+            class="relative z-[61] w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/10"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="itemlist-bulk-title"
+            aria-describedby="itemlist-bulk-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="itemlist-bulk-title" class="text-lg font-bold text-slate-800">
+              選択した履歴を削除しますか？
+            </h3>
+            <p id="itemlist-bulk-desc" class="mt-2 text-base text-slate-600 leading-relaxed">
+              <strong class="text-slate-800">{selectedInFilteredCount()}</strong> 件を削除します。取り消せません。
+            </p>
+            <div class="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-700 shadow-sm active:scale-[0.99] touch-manipulation"
+                onClick={() => setBulkDeleteOpen(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                class="w-full min-h-12 rounded-xl bg-red-600 text-base font-semibold text-white shadow-lg shadow-red-600/20 active:scale-[0.98] touch-manipulation"
+                onClick={() => void executeBulkDelete()}
+              >
+                {selectedInFilteredCount()} 件を削除する
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   )
 }

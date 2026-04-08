@@ -3,6 +3,7 @@ import Scanner from './components/Scanner'
 import Generator from './components/Generator'
 import ItemList from './components/ItemList'
 import UpdatePrompt from './components/UpdatePrompt'
+import { IconPencil, IconX } from './components/icons'
 import { type JanList, loadLists, saveList, deleteList, renameList } from './lib/db'
 
 type Tab = 'scanner' | 'generator' | 'list'
@@ -159,11 +160,11 @@ export default function App() {
                     </h2>
                     <button
                       type="button"
-                      class="min-h-11 min-w-11 shrink-0 rounded-xl text-slate-400 text-xl leading-none flex items-center justify-center active:scale-95 active:bg-slate-100 touch-manipulation"
+                      class="min-h-11 min-w-11 shrink-0 rounded-xl text-slate-400 flex items-center justify-center active:scale-95 active:bg-slate-100 touch-manipulation"
                       onClick={() => { setShowListMenu(false); setCreating(false) }}
                       aria-label="閉じる"
                     >
-                      ✕
+                      <IconX class="h-6 w-6" />
                     </button>
                   </div>
 
@@ -198,15 +199,19 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); startRename(list) }}
-                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-300 text-base rounded-xl active:scale-95 active:text-blue-500 touch-manipulation"
+                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-400 rounded-xl active:scale-95 active:text-blue-600 touch-manipulation"
                                       aria-label="リスト名を変更"
-                                    >✏️</button>
+                                    >
+                                      <IconPencil class="h-5 w-5" />
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); openDeleteListConfirm(list.id) }}
-                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-300 text-xl leading-none rounded-xl active:scale-95 active:text-red-500 touch-manipulation"
+                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-400 rounded-xl active:scale-95 active:text-red-500 touch-manipulation"
                                       aria-label={`${list.name}を削除`}
-                                    >×</button>
+                                    >
+                                      <IconX class="h-5 w-5" />
+                                    </button>
                                   </>
                                 }
                               >
@@ -264,11 +269,11 @@ export default function App() {
                   </h2>
                   <button
                     type="button"
-                    class="min-h-11 min-w-11 shrink-0 rounded-xl text-slate-400 text-xl leading-none flex items-center justify-center active:scale-95 active:bg-slate-100 touch-manipulation"
+                    class="min-h-11 min-w-11 shrink-0 rounded-xl text-slate-400 flex items-center justify-center active:scale-95 active:bg-slate-100 touch-manipulation"
                     onClick={() => { setShowListMenu(false); setCreating(false) }}
                     aria-label="閉じる"
                   >
-                    ✕
+                    <IconX class="h-6 w-6" />
                   </button>
                 </div>
                 <p class="text-sm text-slate-500 pb-4">
