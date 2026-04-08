@@ -3,7 +3,7 @@ import Scanner from './components/Scanner'
 import Generator from './components/Generator'
 import ItemList from './components/ItemList'
 import UpdatePrompt from './components/UpdatePrompt'
-import { type JanList, loadLists, saveList, deleteList } from './lib/db'
+import { type JanList, loadLists, saveList, deleteList, renameList } from './lib/db'
 
 type Tab = 'scanner' | 'generator' | 'list'
 
@@ -15,6 +15,8 @@ export default function App() {
   const [newListName, setNewListName] = createSignal('')
   const [creating, setCreating] = createSignal(false)
   const [deleteListId, setDeleteListId] = createSignal<string | null>(null)
+  const [renamingListId, setRenamingListId] = createSignal<string | null>(null)
+  const [renameValue, setRenameValue] = createSignal('')
 
   onMount(async () => {
     const loaded = await loadLists()
@@ -59,6 +61,20 @@ export default function App() {
 
   function cancelDeleteList() {
     setDeleteListId(null)
+  }
+
+  function startRename(list: JanList) {
+    setRenamingListId(list.id)
+    setRenameValue(list.name)
+  }
+
+  async function commitRename(id: string) {
+    const name = renameValue().trim()
+    if (name) {
+      await renameList(id, name)
+      setLists(lists().map((l) => l.id === id ? { ...l, name } : l))
+    }
+    setRenamingListId(null)
   }
 
   const deleteListTarget = () => {
@@ -151,22 +167,53 @@ export default function App() {
                         {(list) => (
                           <li>
                             <div
-                              class={`flex min-h-14 items-center justify-between gap-2 rounded-2xl border px-3 active:bg-slate-50 touch-manipulation cursor-pointer ${
+                              class={`flex min-h-14 items-center gap-2 rounded-2xl border px-3 ${
                                 list.id === activeListId()
                                   ? 'border-blue-200 bg-blue-50/80 text-blue-700 font-semibold ring-1 ring-blue-100'
                                   : 'border-slate-200/80 bg-white shadow-sm'
                               }`}
-                              onClick={() => { setActiveListId(list.id); setShowListMenu(false) }}
                             >
-                              <span class="min-w-0 flex-1 truncate text-base">{list.name}</span>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); openDeleteListConfirm(list.id) }}
-                                class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-300 text-xl leading-none rounded-xl active:scale-95 active:text-red-500 touch-manipulation"
-                                aria-label={`${list.name}を削除`}
+                              <Show
+                                when={renamingListId() === list.id}
+                                fallback={
+                                  <>
+                                    <span
+                                      class="min-w-0 flex-1 truncate text-base cursor-pointer py-3"
+                                      onClick={() => { setActiveListId(list.id); setShowListMenu(false) }}
+                                    >{list.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); startRename(list) }}
+                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-300 text-base rounded-xl active:scale-95 active:text-blue-500 touch-manipulation"
+                                      aria-label="リスト名を変更"
+                                    >✏️</button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); openDeleteListConfirm(list.id) }}
+                                      class="shrink-0 min-h-11 min-w-11 flex items-center justify-center text-slate-300 text-xl leading-none rounded-xl active:scale-95 active:text-red-500 touch-manipulation"
+                                      aria-label={`${list.name}を削除`}
+                                    >×</button>
+                                  </>
+                                }
                               >
-                                ×
-                              </button>
+                                <input
+                                  type="text"
+                                  value={renameValue()}
+                                  onInput={(e) => setRenameValue(e.currentTarget.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') void commitRename(list.id)
+                                    if (e.key === 'Escape') setRenamingListId(null)
+                                  }}
+                                  onBlur={() => void commitRename(list.id)}
+                                  class="flex-1 rounded-xl border border-blue-400 px-2.5 py-1.5 text-base font-medium text-slate-800 focus:outline-none"
+                                  autofocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void commitRename(list.id)}
+                                  class="shrink-0 rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white touch-manipulation"
+                                >確定</button>
+                              </Show>
                             </div>
                           </li>
                         )}

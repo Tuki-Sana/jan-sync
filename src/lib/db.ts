@@ -60,6 +60,13 @@ export async function saveList(list: JanList): Promise<void> {
   await db.put(LISTS_STORE, list)
 }
 
+export async function renameList(id: string, name: string): Promise<void> {
+  const db = await getDB()
+  const list = await db.get(LISTS_STORE, id) as JanList | undefined
+  if (!list) return
+  await db.put(LISTS_STORE, { ...list, name })
+}
+
 export async function deleteList(id: string): Promise<void> {
   const db = await getDB()
   // リストに属するアイテムも削除

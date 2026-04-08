@@ -1,4 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleString('ja-JP', {
+    month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 import { readBarcodesFromImageFile } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
 
@@ -248,9 +255,10 @@ export default function Scanner(props: { listId: string }) {
                     <button
                       type="button"
                       onClick={() => copyJan(item)}
-                      class="flex-1 min-h-12 min-w-0 text-left font-mono text-base font-bold text-blue-700 rounded-xl px-2 -mx-1 active:bg-blue-50 active:scale-[0.99] transition-transform touch-manipulation"
+                      class="flex-1 min-h-12 min-w-0 text-left rounded-xl px-2 -mx-1 active:bg-blue-50 active:scale-[0.99] transition-transform touch-manipulation"
                     >
-                      {item.jan}
+                      <p class="font-mono text-base font-bold text-blue-700">{item.jan}</p>
+                      <p class="text-xs text-slate-300">{formatDate(item.scannedAt)}</p>
                     </button>
                     <span class="shrink-0 text-xs text-slate-400 max-w-[5.5rem] text-right">
                       {copiedId() === item.id ? 'コピー済み✓' : 'タップでコピー'}
