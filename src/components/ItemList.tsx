@@ -1,17 +1,6 @@
 import { createSignal, For, onMount, Show, createMemo } from 'solid-js'
 import { type ScannedItem, type JanList, loadAllItems, removeItem, saveItem, taxIn } from '../lib/db'
-
-function formatDate(ts: number): string {
-  return new Date(ts).toLocaleString('ja-JP', {
-    month: 'numeric', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
-function parsePriceInput(val: string): number | undefined {
-  const n = parseInt(val.replace(/[^\d]/g, ''), 10)
-  return isNaN(n) ? undefined : n
-}
+import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 function exportCSV(items: ScannedItem[], listMap: Record<string, string>) {
   const headers = ['JAN', '名前', 'リスト', '定価(税抜)', '定価(税込)', '売価(税抜)', '売価(税込)', 'スキャン日時']
@@ -187,7 +176,7 @@ export default function ItemList(props: { lists: JanList[] }) {
                             value={item.jan}
                             onBlur={(e) => {
                               const v = e.currentTarget.value.trim()
-                              if (/^\d{8}$|^\d{13}$/.test(v)) updateField(item.id, { jan: v })
+                              if (isValidJan(v)) updateField(item.id, { jan: v })
                               else e.currentTarget.value = item.jan
                             }}
                             class="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm font-bold focus:border-blue-400 focus:outline-none"

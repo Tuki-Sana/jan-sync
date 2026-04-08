@@ -1,11 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
-function formatDate(ts: number): string {
-  return new Date(ts).toLocaleString('ja-JP', {
-    month: 'numeric', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
 import { readBarcodesFromImageFile } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
 
@@ -163,7 +158,7 @@ export default function Scanner(props: { listId: string }) {
 
   async function commitEditJan(id: string) {
     const jan = editJan().trim()
-    if (/^\d{8}$|^\d{13}$/.test(jan)) await updateField(id, { jan })
+    if (isValidJan(jan)) await updateField(id, { jan })
     setEditingId('')
   }
 
@@ -173,11 +168,6 @@ export default function Scanner(props: { listId: string }) {
     await navigator.clipboard.writeText(item.jan)
     setCopiedId(item.id)
     setTimeout(() => setCopiedId(''), 2000)
-  }
-
-  function parsePriceInput(val: string) {
-    const n = parseInt(val.replace(/[^\d]/g, ''), 10)
-    return isNaN(n) ? undefined : n
   }
 
   onCleanup(() => stopCamera())

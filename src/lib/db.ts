@@ -16,9 +16,7 @@ export interface ScannedItem {
   scannedAt: number
 }
 
-export function taxIn(price: number) {
-  return Math.round(price * 1.1)
-}
+export { taxIn } from './utils'
 
 const DB_NAME = 'jan-sync'
 const LISTS_STORE = 'lists'

@@ -1,28 +1,105 @@
-## Usage
+# JAN Sync
 
-```bash
-$ npm install # or pnpm install or yarn install
+ドラッグストア・小売業の棚前作業を想定した、JANコードのスキャン・管理・バーコード生成 PWA。
+
+スマホのカメラで JAN コードを読み取り、名前・定価・売価を付けて IndexedDB に保存。生成タブではバーコードを一括出力、一覧タブで横断検索・CSV エクスポートができる。
+
+---
+
+## アーキテクチャ
+
+```mermaid
+graph TD
+    subgraph Browser["ブラウザ（オフライン動作）"]
+        App["App.tsx\nリスト管理・タブ制御"]
+        Scanner["Scanner.tsx\nカメラ → スキャン → 保存"]
+        Generator["Generator.tsx\nバーコード一括生成"]
+        ItemList["ItemList.tsx\n横断検索・編集・CSV出力"]
+        Utils["lib/utils.ts\n純粋関数（税計算・バリデーション等）"]
+        DB["lib/db.ts\nIndexedDB ラッパー（idb）"]
+        IDB[("IndexedDB\nlists / scans")]
+    end
+
+    subgraph Libs["ライブラリ"]
+        zxing["zxing-wasm\nEAN-13/8 デコード"]
+        bwip["bwip-js\nバーコード描画"]
+    end
+
+    subgraph Hosting["Cloudflare Pages"]
+        CF["HTTPS 配信\nService Worker キャッシュ"]
+    end
+
+    App --> Scanner & Generator & ItemList
+    Scanner --> DB & zxing
+    Generator --> DB & bwip
+    ItemList --> DB & Utils
+    Scanner --> Utils
+    DB --> IDB
+    CF -->|"初回のみ取得"| Browser
 ```
 
-### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
+---
 
-## Available Scripts
+## 技術スタック
 
-In the project directory, you can run:
+| カテゴリ | 採用技術 |
+|---|---|
+| フレームワーク | SolidJS + Vite + TypeScript |
+| スタイル | Tailwind CSS v4 |
+| スキャン | zxing-wasm (EAN-13 / EAN-8) |
+| バーコード生成 | bwip-js |
+| ストレージ | IndexedDB (idb) |
+| PWA | vite-plugin-pwa + Workbox |
+| ホスティング | Cloudflare Pages |
+| テスト | Vitest |
 
-### `npm run dev`
+---
 
-Runs the app in the development mode.<br>
-Open [http://localhost:5173](http://localhost:5173) to view it in the browser.
+## セットアップ
 
-### `npm run build`
+```bash
+# Node.js と pnpm は mise で管理
+mise install
 
-Builds the app for production to the `dist` folder.<br>
-It correctly bundles Solid in production mode and optimizes the build for the best performance.
+# 依存インストール
+pnpm install
 
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
+# 開発サーバー起動（LAN 公開あり）
+pnpm dev
+```
 
-## Deployment
+スマホ実機テストは `http://<ローカルIP>:5173` でアクセス可（Cloudflare Pages へのデプロイ推奨）。
 
-Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
+---
+
+## コマンド
+
+```bash
+pnpm dev          # 開発サーバー
+pnpm build        # プロダクションビルド
+pnpm test         # ユニットテスト
+pnpm test:watch   # テストウォッチモード
+
+# リリース（バージョンバンプ → git tag → push → Cloudflare 自動デプロイ）
+pnpm release:patch   # x.x.X
+pnpm release:minor   # x.X.0
+pnpm release:major   # X.0.0
+```
+
+---
+
+## データ設計
+
+```
+IndexedDB: jan-sync
+├── lists   { id, name, createdAt }
+└── scans   { id, listId, jan, name, retailPrice?, salePrice?, scannedAt }
+```
+
+全データはデバイス内のみ。サーバーへの送信なし。
+
+---
+
+## ライセンス
+
+MIT
