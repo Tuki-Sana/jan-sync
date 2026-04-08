@@ -264,12 +264,12 @@ export default function Scanner(props: { listId: string }) {
                   <a
                     href={`https://www.google.com/search?q=${item.jan}+${encodeURIComponent(item.name)}`}
                     target="_blank" rel="noopener noreferrer"
-                    class="flex-1 rounded-lg bg-gray-100 py-1.5 text-center text-xs font-medium text-gray-700"
+                    class="flex-1 rounded-xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 active:bg-gray-300 transition-colors select-none"
                   >Google</a>
                   <a
                     href={`https://search.yahoo.co.jp/search?p=${item.jan}+${encodeURIComponent(item.name)}`}
                     target="_blank" rel="noopener noreferrer"
-                    class="flex-1 rounded-lg bg-gray-100 py-1.5 text-center text-xs font-medium text-gray-700"
+                    class="flex-1 rounded-xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 active:bg-gray-300 transition-colors select-none"
                   >Yahoo!</a>
                 </div>
               </div>
