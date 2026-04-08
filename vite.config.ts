@@ -1,4 +1,6 @@
 import { defineConfig } from 'vite'
+import { readFileSync } from 'node:fs'
+const { version } = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 import solid from 'vite-plugin-solid'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -7,7 +9,7 @@ export default defineConfig({
     solid(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'logo.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'JAN Sync',
@@ -28,6 +30,9 @@ export default defineConfig({
       },
     }),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   server: {
     host: true,
   },

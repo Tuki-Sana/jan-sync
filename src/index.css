@@ -2,4 +2,34 @@
 
 body {
   margin: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ボトムシートの登場アニメーション（軽量・GPU フレンドリー） */
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet-panel {
+  animation: sheet-slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-panel {
+    animation: none;
+  }
+}
+
+/* iOS: フォーカス時の自動ズーム防止（16px 以上） */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  font-size: 16px;
 }

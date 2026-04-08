@@ -2,6 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import Scanner from './components/Scanner'
 import Generator from './components/Generator'
 import ItemList from './components/ItemList'
+import UpdatePrompt from './components/UpdatePrompt'
 import { type JanList, loadLists, saveList, deleteList } from './lib/db'
 
 type Tab = 'scanner' | 'generator' | 'list'
@@ -67,9 +68,13 @@ export default function App() {
 
   return (
     <div class="min-h-dvh bg-slate-50 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+      <UpdatePrompt />
       {/* ヘッダー */}
       <header class="bg-white border-b border-slate-200/80 px-4 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-3 shadow-sm relative">
-        <h1 class="text-center text-lg font-bold tracking-tight text-slate-800">JAN Sync</h1>
+        <div class="flex items-baseline justify-center gap-2">
+          <h1 class="text-lg font-bold tracking-tight text-slate-800">JAN Sync</h1>
+          <span class="text-xs text-slate-400">v{__APP_VERSION__}</span>
+        </div>
 
         {/* リスト選択 */}
         <div class="mt-2 flex items-stretch gap-2">
