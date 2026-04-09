@@ -34,7 +34,11 @@ export default function Scanner(props: { listId: string }) {
 
   // ── カメラ制御 ──────────────────────────────────────────
 
+  let isStarting = false
+
   async function startCamera() {
+    if (isStarting || scanning()) return
+    isStarting = true
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -48,6 +52,8 @@ export default function Scanner(props: { listId: string }) {
       }
     } catch (e) {
       setError('カメラへのアクセスに失敗しました: ' + (e as Error).message)
+    } finally {
+      isStarting = false
     }
   }
 
@@ -71,7 +77,7 @@ export default function Scanner(props: { listId: string }) {
   async function scanFrame() {
     if (!videoRef || !canvasRef || videoRef.readyState < 2) { scheduleFrame(); return }
     const ctx = canvasRef.getContext('2d')
-    if (!ctx) return
+    if (!ctx) { scheduleFrame(); return }
     canvasRef.width = videoRef.videoWidth
     canvasRef.height = videoRef.videoHeight
     ctx.drawImage(videoRef, 0, 0)
