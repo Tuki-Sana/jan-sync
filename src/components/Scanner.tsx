@@ -1,38 +1,9 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 import { readBarcodesFromImageFile } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
-
-function IconPencil(props: { class?: string }) {
-  return (
-    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </svg>
-  )
-}
-
-function IconTrash(props: { class?: string }) {
-  return (
-    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <line x1="10" x2="10" y1="11" y2="17" />
-      <line x1="14" x2="14" y1="11" y2="17" />
-    </svg>
-  )
-}
-
-function IconCopy(props: { class?: string }) {
-  return (
-    <svg class={props.class} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-    </svg>
-  )
-}
+import { IconPencil, IconTrash, IconCopy } from './icons'
 
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
@@ -48,24 +19,22 @@ export default function Scanner(props: { listId: string }) {
   const [showClearConfirm, setShowClearConfirm] = createSignal(false)
   const [pendingDeleteItemId, setPendingDeleteItemId] = createSignal<string | null>(null)
 
-  onMount(async () => {
-    setItems(await loadByList(props.listId))
+  /** listId が変わったらカメラ停止・編集解除・履歴を差し替え */
+  let listLoadGen = 0
+  createEffect(() => {
+    const listId = props.listId
+    const gen = ++listLoadGen
+    stopCamera()
+    setEditingId('')
+    setEditJan('')
+    void loadByList(listId).then((data) => {
+      if (gen === listLoadGen) setItems(data)
+    })
   })
-
-  // リスト切り替え時に再ロード
-  let prevListId = props.listId
-  const reloadIfNeeded = async () => {
-    if (props.listId !== prevListId) {
-      prevListId = props.listId
-      stopCamera()
-      setItems(await loadByList(props.listId))
-    }
-  }
 
   // ── カメラ制御 ──────────────────────────────────────────
 
   async function startCamera() {
-    await reloadIfNeeded()
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -96,6 +65,8 @@ export default function Scanner(props: { listId: string }) {
     animFrameId = requestAnimationFrame(scanFrame)
   }
 
+  let decodeLock = false
+
   async function scanFrame() {
     if (!videoRef || !canvasRef || videoRef.readyState < 2) { scheduleFrame(); return }
     const ctx = canvasRef.getContext('2d')
@@ -103,29 +74,41 @@ export default function Scanner(props: { listId: string }) {
     canvasRef.width = videoRef.videoWidth
     canvasRef.height = videoRef.videoHeight
     ctx.drawImage(videoRef, 0, 0)
-    canvasRef.toBlob(async (blob) => {
+    canvasRef.toBlob((blob) => {
       if (!blob) { scheduleFrame(); return }
-      try {
-        const results = await readBarcodesFromImageFile(
-          new File([blob], 'frame.png', { type: 'image/png' }),
-          { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
-        )
-        if (results.length > 0) {
-          navigator.vibrate?.(200)
-          await addItem(results[0].text)
-          stopCamera()
-          return
+      if (decodeLock) { scheduleFrame(); return }
+      decodeLock = true
+      void (async () => {
+        try {
+          const results = await readBarcodesFromImageFile(
+            new File([blob], 'frame.png', { type: 'image/png' }),
+            { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
+          )
+          if (results.length > 0) {
+            navigator.vibrate?.(200)
+            const added = await addItem(results[0].text)
+            if (added) {
+              stopCamera()
+              return
+            }
+          }
+        } catch { /* wasmロード前は無視 */ } finally {
+          decodeLock = false
         }
-      } catch { /* wasmロード前は無視 */ }
-      scheduleFrame()
+        scheduleFrame()
+      })()
     }, 'image/png')
   }
 
   // ── データ操作 ──────────────────────────────────────────
 
-  async function addItem(jan: string) {
-    await reloadIfNeeded()
-    if (items()[0]?.jan === jan) { startCamera(); return }
+  /** 保存して停止する場合 true。無効 JAN・先頭と重複のときは false（スキャン継続） */
+  async function addItem(jan: string): Promise<boolean> {
+    if (!isValidJan(jan)) return false
+    if (items()[0]?.jan === jan) {
+      void startCamera()
+      return false
+    }
     const item: ScannedItem = {
       id: crypto.randomUUID(),
       listId: props.listId,
@@ -136,6 +119,7 @@ export default function Scanner(props: { listId: string }) {
     }
     await saveItem(item)
     setItems([item, ...items()])
+    return true
   }
 
   async function updateField(id: string, patch: Partial<ScannedItem>) {
@@ -185,16 +169,22 @@ export default function Scanner(props: { listId: string }) {
 
   async function commitEditJan(id: string) {
     const jan = editJan().trim()
-    if (isValidJan(jan)) await updateField(id, { jan })
+    if (!isValidJan(jan)) return
+    await updateField(id, { jan })
     setEditingId('')
   }
 
   // ── コピー ───────────────────────────────────────────────
 
   async function copyJan(item: ScannedItem) {
-    await navigator.clipboard.writeText(item.jan)
-    setCopiedId(item.id)
-    setTimeout(() => setCopiedId(''), 2000)
+    try {
+      await navigator.clipboard.writeText(item.jan)
+      setCopiedId(item.id)
+      setTimeout(() => setCopiedId(''), 2000)
+    } catch {
+      setError('コピーに失敗しました（HTTPS で開いているか確認してください）')
+      setTimeout(() => setError(''), 5000)
+    }
   }
 
   onCleanup(() => stopCamera())
