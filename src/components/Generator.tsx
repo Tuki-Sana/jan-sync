@@ -157,7 +157,7 @@ export default function Generator(props: { listId: string }) {
           type="button"
           onClick={() => setMode('db')}
           class={`flex-1 min-h-12 py-3 transition-colors touch-manipulation active:scale-[0.99] ${mode() === 'db' ? 'bg-blue-600 text-white shadow-inner' : 'bg-white text-slate-500'}`}
-        >DBから生成</button>
+        >スキャン履歴から生成</button>
         <button
           type="button"
           onClick={() => setMode('manual')}
