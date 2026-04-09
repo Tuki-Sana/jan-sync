@@ -29,7 +29,7 @@ export default function Scanner(props: { listId: string }) {
     setEditJan('')
     void loadByList(listId).then((data) => {
       if (gen === listLoadGen) setItems(data)
-    })
+    }).catch(() => {})
   })
 
   // ── カメラ制御 ──────────────────────────────────────────
@@ -105,10 +105,7 @@ export default function Scanner(props: { listId: string }) {
   /** 保存して停止する場合 true。無効 JAN・先頭と重複のときは false（スキャン継続） */
   async function addItem(jan: string): Promise<boolean> {
     if (!isValidJan(jan)) return false
-    if (items()[0]?.jan === jan) {
-      void startCamera()
-      return false
-    }
+    if (items()[0]?.jan === jan) return false
     const item: ScannedItem = {
       id: crypto.randomUUID(),
       listId: props.listId,
