@@ -29,7 +29,7 @@ export default function Scanner(props: { listId: string }) {
     setEditJan('')
     void loadByList(listId).then((data) => {
       if (gen === listLoadGen) setItems(data)
-    }).catch(() => {})
+    }).catch((e) => console.warn('[Scanner] loadByList failed:', e))
   })
 
   // ── カメラ制御 ──────────────────────────────────────────
@@ -62,6 +62,7 @@ export default function Scanner(props: { listId: string }) {
   }
 
   function scheduleFrame() {
+    if (!scanning()) return
     animFrameId = requestAnimationFrame(scanFrame)
   }
 
