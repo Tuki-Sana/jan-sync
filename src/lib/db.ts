@@ -102,6 +102,16 @@ export async function removeItem(id: string): Promise<void> {
   await db.delete(SCANS_STORE, id)
 }
 
+/** 複数 ID を1トランザクションで削除（途中失敗時はいずれも反映されない） */
+export async function removeItems(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const db = await getDB()
+  const tx = db.transaction(SCANS_STORE, 'readwrite')
+  const store = tx.objectStore(SCANS_STORE)
+  for (const id of ids) store.delete(id)
+  await tx.done
+}
+
 export async function clearByList(listId: string): Promise<void> {
   const db = await getDB()
   const items = await db.getAllFromIndex(SCANS_STORE, 'listId', listId)

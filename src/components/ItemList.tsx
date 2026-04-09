@@ -1,6 +1,13 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
-import { type ScannedItem, type JanList, loadAllItems, removeItem, saveItem, taxIn } from '../lib/db'
+import { type ScannedItem, type JanList, loadAllItems, removeItem, removeItems, saveItem, taxIn } from '../lib/db'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
+
+/** Excel 等での数式解釈を避ける（先頭が = + - @ のときタブを前置） */
+function csvCell(cell: string | number): string {
+  let s = String(cell)
+  if (/^[=+\-@]/.test(s)) s = `\t${s}`
+  return `"${s.replace(/"/g, '""')}"`
+}
 
 function exportCSV(items: ScannedItem[], listMap: Record<string, string>) {
   const headers = ['JAN', '名前', '個数', 'リスト', '定価(税抜)', '定価(税込)', '売価(税抜)', '売価(税込)', 'スキャン日時']
@@ -16,7 +23,7 @@ function exportCSV(items: ScannedItem[], listMap: Record<string, string>) {
     formatDate(i.scannedAt),
   ])
   const csv = [headers, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .map((row) => row.map(csvCell).join(','))
     .join('\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
@@ -35,6 +42,21 @@ export default function ItemList(props: { lists: JanList[] }) {
   const [selectedIds, setSelectedIds] = createSignal<Set<string>>(new Set())
   const [pendingDeleteOneId, setPendingDeleteOneId] = createSignal<string | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = createSignal(false)
+  const [janDraft, setJanDraft] = createSignal('')
+
+  /** 展開行が変わったときだけ JAN 下書きを同期（入力中に items の他フィールド更新で潰さない） */
+  let prevExpandedId: string | null | undefined
+  createEffect(() => {
+    const id = expandedId()
+    if (id === prevExpandedId) return
+    prevExpandedId = id
+    if (id) {
+      const row = items().find((i) => i.id === id)
+      setJanDraft(row?.jan ?? '')
+    } else {
+      setJanDraft('')
+    }
+  })
 
   onMount(async () => {
     setItems(await loadAllItems())
@@ -128,8 +150,16 @@ export default function ItemList(props: { lists: JanList[] }) {
   async function executeBulkDelete() {
     const ids = Array.from(selectedIds())
     if (ids.length === 0) return
-    for (const id of ids) await removeItem(id)
-    setItems((prev) => prev.filter((i) => !ids.includes(i.id)))
+    try {
+      await removeItems(ids)
+      setItems((prev) => prev.filter((i) => !ids.includes(i.id)))
+    } catch {
+      try {
+        setItems(await loadAllItems())
+      } catch {
+        /* ignore */
+      }
+    }
     setSelectedIds(new Set<string>())
     setBulkDeleteOpen(false)
     const ex = expandedId()
@@ -302,11 +332,17 @@ export default function ItemList(props: { lists: JanList[] }) {
                           <input
                             type="text"
                             inputmode="numeric"
-                            value={item.jan}
-                            onBlur={(e) => {
-                              const v = e.currentTarget.value.trim()
-                              if (isValidJan(v)) updateField(item.id, { jan: v })
-                              else e.currentTarget.value = item.jan
+                            value={janDraft()}
+                            onInput={(e) =>
+                              setJanDraft(e.currentTarget.value.replace(/\D/g, '').slice(0, 13))
+                            }
+                            onBlur={() => {
+                              const v = janDraft().trim()
+                              if (isValidJan(v)) void updateField(item.id, { jan: v })
+                              else {
+                                const row = items().find((i) => i.id === item.id)
+                                setJanDraft(row?.jan ?? '')
+                              }
                             }}
                             class="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm font-bold focus:border-blue-400 focus:outline-none"
                             maxLength={13}

@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from 'solid-js'
+import { createEffect, createSignal, For, onMount, Show } from 'solid-js'
 import bwipjs from 'bwip-js/browser'
 import { type ScannedItem, loadByList, taxIn } from '../lib/db'
 
@@ -75,23 +75,24 @@ export default function Generator(props: { listId: string }) {
   const [multiGenerated, setMultiGenerated] = createSignal<ScannedItem[]>([])
   const [multiErrors, setMultiErrors] = createSignal<string[]>([])
 
-  onMount(async () => {
-    setDbItems(await loadByList(props.listId))
-    setLoading(false)
+  let listLoadGen = 0
+  createEffect(() => {
+    const id = props.listId
+    const gen = ++listLoadGen
+    setLoading(true)
+    setSelected(new Set<string>())
+    setGenerated([])
+    void loadByList(id)
+      .then((data) => {
+        if (gen !== listLoadGen) return
+        setDbItems(data)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (gen !== listLoadGen) return
+        setLoading(false)
+      })
   })
-
-  // リスト切り替え時に再ロード
-  let prevListId = props.listId
-  const reloadIfNeeded = async () => {
-    if (props.listId !== prevListId) {
-      prevListId = props.listId
-      setLoading(true)
-      setSelected(new Set<string>())
-      setGenerated([])
-      setDbItems(await loadByList(props.listId))
-      setLoading(false)
-    }
-  }
 
   function toggleSelect(id: string) {
     const next = new Set<string>(selected())
@@ -104,8 +105,7 @@ export default function Generator(props: { listId: string }) {
     setSelected(selected().size === ids.length ? new Set<string>() : new Set<string>(ids))
   }
 
-  async function generateFromDB() {
-    await reloadIfNeeded()
+  function generateFromDB() {
     setGenerated(dbItems().filter((i) => selected().has(i.id)))
   }
 
