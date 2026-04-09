@@ -93,7 +93,7 @@ pnpm release:major   # X.0.0
 ```
 IndexedDB: jan-sync
 ├── lists   { id, name, createdAt }
-└── scans   { id, listId, jan, name, quantity, retailPrice?, salePrice?, scannedAt }
+└── scans   { id, listId, jan, name, quantity?, retailPrice?, salePrice?, scannedAt }
 ```
 
 全データはデバイス内のみ。サーバーへの送信なし。
