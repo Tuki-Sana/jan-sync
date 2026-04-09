@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
-import { readBarcodesFromImageFile } from 'zxing-wasm/reader'
+import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
 import { IconPencil, IconTrash, IconCopy } from './icons'
 
@@ -80,8 +80,8 @@ export default function Scanner(props: { listId: string }) {
       decodeLock = true
       void (async () => {
         try {
-          const results = await readBarcodesFromImageFile(
-            new File([blob], 'frame.png', { type: 'image/png' }),
+          const results = await readBarcodes(
+            blob,
             { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
           )
           if (results.length > 0) {
