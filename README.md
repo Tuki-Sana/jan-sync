@@ -100,6 +100,3 @@ IndexedDB: jan-sync
 
 ---
 
-## ライセンス
-
-MIT
