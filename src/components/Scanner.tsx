@@ -3,7 +3,7 @@ import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
-import { IconPencil, IconTrash, IconCopy } from './icons'
+import { IconPencil, IconTrash, IconCopy, IconFlashlight } from './icons'
 
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
@@ -11,6 +11,8 @@ export default function Scanner(props: { listId: string }) {
   let animFrameId: number | undefined
 
   const [scanning, setScanning] = createSignal(false)
+  const [torchSupported, setTorchSupported] = createSignal(false)
+  const [torchOn, setTorchOn] = createSignal(false)
   const [error, setError] = createSignal('')
   const [items, setItems] = createSignal<ScannedItem[]>([])
   const [copiedId, setCopiedId] = createSignal('')
@@ -47,6 +49,9 @@ export default function Scanner(props: { listId: string }) {
       if (videoRef) {
         videoRef.srcObject = stream
         await videoRef.play()
+        const track = stream.getVideoTracks()[0]
+        const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean }
+        setTorchSupported(!!capabilities.torch)
         setScanning(true)
         scheduleFrame()
       }
@@ -65,6 +70,17 @@ export default function Scanner(props: { listId: string }) {
       videoRef.srcObject = null
     }
     setScanning(false)
+    setTorchOn(false)
+    setTorchSupported(false)
+  }
+
+  async function toggleTorch() {
+    if (!videoRef?.srcObject) return
+    const stream = videoRef.srcObject as MediaStream
+    const track = stream.getVideoTracks()[0]
+    const next = !torchOn()
+    await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
+    setTorchOn(next)
   }
 
   function scheduleFrame() {
@@ -216,6 +232,21 @@ export default function Scanner(props: { listId: string }) {
         )}
         {scanning() && (
           <div class="absolute inset-x-6 top-1/2 -translate-y-1/2 h-0.5 bg-red-500/90 rounded shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+        )}
+        {scanning() && torchSupported() && (
+          <button
+            type="button"
+            onClick={() => void toggleTorch()}
+            class={`absolute bottom-3 right-3 flex h-12 w-12 items-center justify-center rounded-2xl backdrop-blur-sm shadow-lg transition-colors touch-manipulation ${
+              torchOn()
+                ? 'bg-yellow-400/90 text-slate-900'
+                : 'bg-white/20 text-white/80'
+            }`}
+            aria-label={torchOn() ? 'ライトを消す' : 'ライトを点ける'}
+            aria-pressed={torchOn()}
+          >
+            <IconFlashlight class="h-6 w-6" />
+          </button>
         )}
       </div>
 
