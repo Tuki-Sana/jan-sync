@@ -50,8 +50,10 @@ export default function Scanner(props: { listId: string }) {
         videoRef.srcObject = stream
         await videoRef.play()
         const track = stream.getVideoTracks()[0]
-        const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean }
-        setTorchSupported(!!capabilities.torch)
+        if (track && typeof track.getCapabilities === 'function') {
+          const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean }
+          setTorchSupported(!!capabilities.torch)
+        }
         setScanning(true)
         scheduleFrame()
       }
@@ -74,13 +76,25 @@ export default function Scanner(props: { listId: string }) {
     setTorchSupported(false)
   }
 
+  let torchLock = false
+
   async function toggleTorch() {
-    if (!videoRef?.srcObject) return
+    if (torchLock || !videoRef?.srcObject) return
     const stream = videoRef.srcObject as MediaStream
     const track = stream.getVideoTracks()[0]
+    if (!track) return
+    torchLock = true
     const next = !torchOn()
-    await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
-    setTorchOn(next)
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
+      if (videoRef?.srcObject) setTorchOn(next)
+    } catch (e) {
+      console.error('[toggleTorch]', (e as Error).name, (e as Error).message)
+      setError('ライトの切替に失敗しました')
+      setTimeout(() => setError(''), 4000)
+    } finally {
+      torchLock = false
+    }
   }
 
   function scheduleFrame() {
