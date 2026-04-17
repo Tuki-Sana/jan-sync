@@ -1,5 +1,6 @@
 /**
  * スキャン成功時の触覚・短いビープ（レジ／ハンディ風）。
+ * 音は「端末メディア音量を最大にしなくても聞き取れる」よう体感を寄せる（目安 50% 前後）。
  * iOS 向けに、ユーザー操作のコールスタック内で primeScanAudio を呼ぶこと。
  */
 
@@ -39,22 +40,37 @@ export function playScanBeep(soundOn: boolean): void {
     if (ctx.state === 'suspended') void ctx.resume()
 
     const t0 = ctx.currentTime
-    const dur = 0.078
+    const dur = 0.086
+    const dest = ctx.destination
+
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
-    osc.frequency.setValueAtTime(2000, t0)
-
-    /** レジ寄りの聞き取りやすさ優先（端末のメディア音量に依存。0.5超は歪みやすい） */
-    const peak = 0.44
+    osc.frequency.setValueAtTime(1960, t0)
+    /** 基音（メディア音量を下げても埋もれにくいようやや強め） */
+    const peak = 0.48
     gain.gain.setValueAtTime(0.0001, t0)
-    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.008)
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.007)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
-
     osc.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(dest)
+
+    /** 2倍音を薄く足して帯域を広げ、小音量時の聞こえを補う */
+    const oscH = ctx.createOscillator()
+    const gainH = ctx.createGain()
+    oscH.type = 'sine'
+    oscH.frequency.setValueAtTime(3920, t0)
+    const hPeak = 0.11
+    gainH.gain.setValueAtTime(0.0001, t0)
+    gainH.gain.exponentialRampToValueAtTime(hPeak, t0 + 0.005)
+    gainH.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 0.88)
+    oscH.connect(gainH)
+    gainH.connect(dest)
+
     osc.start(t0)
-    osc.stop(t0 + dur + 0.01)
+    oscH.start(t0)
+    osc.stop(t0 + dur + 0.012)
+    oscH.stop(t0 + dur + 0.012)
   } catch {
     /* ignore */
   }
