@@ -1,15 +1,19 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { type ScannedItem, type JanList, loadAllItems, removeItem, removeItems, saveItem, taxIn } from '../lib/db'
-import { type CsvDelimiter, type CsvPreset, triggerExportDownload } from '../lib/csvExport'
+import { type CsvDelimiter, type CsvPreset, exportHeaders, triggerExportDownload } from '../lib/csvExport'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 type ExportMenuId = 'preset' | 'delimiter'
 
-const EXPORT_PRESET_OPTIONS: { value: CsvPreset; label: string; triggerLabel?: string }[] = [
+/** CSV「すべて」プリセットの列名（exportHeaders と同一） */
+const FULL_EXPORT_HEADERS = exportHeaders('full')
+
+const EXPORT_PRESET_OPTIONS: { value: CsvPreset; label: string; triggerLabel?: string; hintTitle?: string }[] = [
   {
     value: 'full',
-    label: 'すべて（JAN・名前・個数・価格・リスト・日時）',
+    label: 'すべての列',
     triggerLabel: 'すべての列',
+    hintTitle: `全${FULL_EXPORT_HEADERS.length}列（下の順で1行目ヘッダに出力）`,
   },
   { value: 'jan_name', label: 'JAN と名前のみ' },
   { value: 'jan_only', label: 'JAN のみ' },
@@ -27,7 +31,7 @@ interface ExportDropdownProps {
   fieldLabel: string
   /** 現在値（親の signal から渡す） */
   value: string
-  options: readonly { value: string; label: string; triggerLabel?: string }[]
+  options: readonly { value: string; label: string; triggerLabel?: string; hintTitle?: string }[]
   onSelect: (value: string) => void
 }
 
@@ -42,7 +46,7 @@ function ExportDropdown(props: ExportDropdownProps) {
     const o = currentOption()
     return o?.triggerLabel ?? o?.label ?? props.value
   }
-  const currentTitle = () => currentOption()?.label ?? props.value
+  const currentTitle = () => currentOption()?.hintTitle ?? currentOption()?.label ?? props.value
 
   onMount(() => {
     const onDocDown = (e: MouseEvent) => {
@@ -290,6 +294,26 @@ export default function ItemList(props: { lists: JanList[] }) {
           options={EXPORT_PRESET_OPTIONS}
           onSelect={(v) => setExportPreset(v as CsvPreset)}
         />
+        <Show when={exportPreset() === 'full'}>
+          <div class="rounded-xl border border-slate-100 bg-slate-50/90 px-3 py-2.5 ring-1 ring-slate-900/5">
+            <p class="text-xs font-semibold text-slate-600">出力される列（左から順）</p>
+            <p class="mt-0.5 text-xs leading-relaxed text-slate-500">
+              ダウンロードしたファイルの1行目（ヘッダ行）と、次の列名がこの順で一致します。
+            </p>
+            <div class="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
+              <For each={[...FULL_EXPORT_HEADERS]}>
+                {(h, idx) => (
+                  <div class="flex gap-2 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5 text-xs text-slate-800 shadow-sm">
+                    <span class="w-6 shrink-0 text-right font-mono font-semibold text-slate-400 tabular-nums">
+                      {idx() + 1}
+                    </span>
+                    <span class="min-w-0 font-medium">{h}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
         <div class="flex flex-col gap-1.5">
           <label class="flex cursor-pointer items-start gap-2 text-sm text-slate-700 touch-manipulation">
             <input
