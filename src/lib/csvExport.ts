@@ -9,6 +9,18 @@ export function csvCell(cell: string | number): string {
   return `"${s.replace(/"/g, '""')}"`
 }
 
+/**
+ * JAN 列専用。数字のみのコードは先頭にタブを付けてからクォートし、
+ * Excel / Calc / スプレッドシートの数値化で先頭 0 が落ちにくくする。
+ */
+export function csvCellJan(jan: string): string {
+  const t = String(jan).trim()
+  if (/^\d+$/.test(t)) {
+    return csvCell(`\t${t}`)
+  }
+  return csvCell(t)
+}
+
 export type CsvPreset = 'full' | 'jan_only' | 'jan_name'
 
 export type CsvDelimiter = 'comma' | 'tab'
@@ -113,7 +125,13 @@ export function buildExportText(
   const sep = options.delimiter === 'tab' ? '\t' : ','
   const headers = exportHeaders(options.preset)
   const data = buildExportRows(items, listMap, options)
-  const lines = [headers, ...data].map((row) => row.map(csvCell).join(sep))
+  const formatCell = (cell: string | number, colIdx: number) => {
+    if (headers[colIdx] === 'JAN' && typeof cell === 'string') {
+      return csvCellJan(cell)
+    }
+    return csvCell(cell)
+  }
+  const lines = [headers, ...data].map((row) => row.map(formatCell).join(sep))
   return lines.join('\n')
 }
 

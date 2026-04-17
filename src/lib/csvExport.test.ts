@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { buildExportRows, buildExportText, exportHeaders } from './csvExport'
+import { buildExportRows, buildExportText, csvCellJan, exportHeaders } from './csvExport'
 import type { ScannedItem } from './db'
 
 const listMap = { L1: 'テストリスト' }
@@ -61,7 +61,26 @@ describe('buildExportRows', () => {
   })
 })
 
+describe('csvCellJan', () => {
+  test('数字のみの JAN は先頭タブ付きでクォート', () => {
+    expect(csvCellJan('0490123456789')).toBe('"\t0490123456789"')
+  })
+  test('非数字を含む場合は通常の csvCell', () => {
+    expect(csvCellJan('490x')).toBe('"490x"')
+  })
+})
+
 describe('buildExportText', () => {
+  test('JAN データ行は数字のみならタブ前置で出力', () => {
+    const text = buildExportText([baseItem({ jan: '0490123456789' })], listMap, {
+      preset: 'jan_only',
+      expandQuantity: false,
+      delimiter: 'comma',
+    })
+    const lines = text.split('\n')
+    expect(lines[0]).toBe('"JAN"') // ヘッダはラベル文字列のみ
+    expect(lines[1]).toBe('"\t0490123456789"')
+  })
   test('タブ区切りにタブが含まれる', () => {
     const text = buildExportText([baseItem({ name: 'x' })], listMap, {
       preset: 'jan_name',
