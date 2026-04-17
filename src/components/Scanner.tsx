@@ -3,10 +3,12 @@ import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
+import { disposeScanAudio, playScanBeep, primeScanAudio, vibrateOnScanSuccess } from '../lib/scanFeedback'
 import { IconPencil, IconTrash, IconCopy, IconFlashlight } from './icons'
 
 const LS_CONTINUOUS = 'jan-sync-continuous-scan'
 const LS_DISPLAY = 'jan-sync-scanner-display'
+const LS_SCAN_SOUND = 'jan-sync-scan-sound'
 
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
@@ -25,6 +27,7 @@ export default function Scanner(props: { listId: string }) {
   const [pendingDeleteItemId, setPendingDeleteItemId] = createSignal<string | null>(null)
   const [continuousScan, setContinuousScan] = createSignal(false)
   const [displayMode, setDisplayMode] = createSignal<'full' | 'compact'>('full')
+  const [scanSoundEnabled, setScanSoundEnabled] = createSignal(true)
 
   /** listId が変わったらカメラ停止・編集解除・履歴を差し替え */
   let listLoadGen = 0
@@ -45,6 +48,7 @@ export default function Scanner(props: { listId: string }) {
 
   async function startCamera() {
     if (isStarting || scanning()) return
+    primeScanAudio()
     isStarting = true
     setError('')
     try {
@@ -127,11 +131,14 @@ export default function Scanner(props: { listId: string }) {
             { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
           )
           if (results.length > 0) {
-            navigator.vibrate?.(200)
             const added = await addItem(results[0].text)
-            if (added && !continuousScan()) {
-              stopCamera()
-              return
+            if (added) {
+              vibrateOnScanSuccess()
+              playScanBeep(scanSoundEnabled())
+              if (!continuousScan()) {
+                stopCamera()
+                return
+              }
             }
           }
         } catch { /* wasmロード前は無視 */ } finally {
@@ -226,7 +233,10 @@ export default function Scanner(props: { listId: string }) {
     }
   }
 
-  onCleanup(() => stopCamera())
+  onCleanup(() => {
+    stopCamera()
+    disposeScanAudio()
+  })
 
   function persistContinuous(v: boolean) {
     try {
@@ -240,10 +250,17 @@ export default function Scanner(props: { listId: string }) {
     } catch { /* ignore */ }
   }
 
+  function persistScanSound(on: boolean) {
+    try {
+      localStorage.setItem(LS_SCAN_SOUND, on ? '1' : '0')
+    } catch { /* ignore */ }
+  }
+
   onMount(() => {
     try {
       setContinuousScan(localStorage.getItem(LS_CONTINUOUS) === '1')
       setDisplayMode(localStorage.getItem(LS_DISPLAY) === 'compact' ? 'compact' : 'full')
+      setScanSoundEnabled(localStorage.getItem(LS_SCAN_SOUND) !== '0')
     } catch { /* ignore */ }
 
     const onKey = (e: KeyboardEvent) => {
@@ -291,7 +308,13 @@ export default function Scanner(props: { listId: string }) {
       {/* 操作ボタン（開始／停止を1ボタンでトグル） */}
       <button
         type="button"
-        onClick={() => (scanning() ? stopCamera() : void startCamera())}
+        onClick={() => {
+          if (scanning()) stopCamera()
+          else {
+            primeScanAudio()
+            void startCamera()
+          }
+        }}
         class={`w-full min-h-14 rounded-2xl px-4 text-base font-semibold shadow-lg active:scale-[0.98] transition-transform touch-manipulation ${
           scanning()
             ? 'bg-slate-800 text-white shadow-slate-800/25'
@@ -317,6 +340,23 @@ export default function Scanner(props: { listId: string }) {
               class="h-5 w-5 rounded border-slate-300 accent-blue-600"
             />
             <span class="text-xs text-slate-500">読取後もカメラ継続</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-center justify-between gap-3 touch-manipulation">
+          <span class="text-sm font-medium text-slate-700">スキャン音</span>
+          <span class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={scanSoundEnabled()}
+              onChange={(e) => {
+                const on = e.currentTarget.checked
+                if (on) primeScanAudio()
+                setScanSoundEnabled(on)
+                persistScanSound(on)
+              }}
+              class="h-5 w-5 rounded border-slate-300 accent-blue-600"
+            />
+            <span class="text-xs text-slate-500">成功時の短い音（iOSは開始タップで解除）</span>
           </span>
         </label>
         <div class="flex flex-col gap-1.5">
