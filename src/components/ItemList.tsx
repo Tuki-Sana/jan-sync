@@ -280,15 +280,22 @@ export default function ItemList(props: { lists: JanList[] }) {
           options={EXPORT_PRESET_OPTIONS}
           onSelect={(v) => setExportPreset(v as CsvPreset)}
         />
-        <label class="flex items-center gap-2 text-sm text-slate-700 touch-manipulation">
-          <input
-            type="checkbox"
-            checked={exportExpandQty()}
-            onChange={(e) => setExportExpandQty(e.currentTarget.checked)}
-            class="h-4 w-4 rounded border-slate-300 accent-blue-600"
-          />
-          個数ぶん行を縦に展開（1行＝1個単位）
-        </label>
+        <div class="flex flex-col gap-1.5">
+          <label class="flex cursor-pointer items-start gap-2 text-sm text-slate-700 touch-manipulation">
+            <input
+              type="checkbox"
+              checked={exportExpandQty()}
+              onChange={(e) => setExportExpandQty(e.currentTarget.checked)}
+              class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
+            />
+            <span>個数ぶん行を縦に展開（1行＝1個単位）</span>
+          </label>
+          <Show when={exportPreset() === 'jan_only' || exportPreset() === 'jan_name'}>
+            <p class="text-xs leading-relaxed text-slate-400 pl-6">
+              縦展開ON時、同じ行を個数ぶん繰り返します（個数列なし）。
+            </p>
+          </Show>
+        </div>
         <ExportDropdown
           menuId="delimiter"
           openMenu={openExportMenu}
