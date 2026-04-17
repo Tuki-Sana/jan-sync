@@ -4,11 +4,21 @@ import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
 import { disposeScanAudio, playScanBeep, primeScanAudio, vibrateOnScanSuccess } from '../lib/scanFeedback'
+import {
+  type InventoryTarget,
+  INV_COOLDOWN_MAX_MS,
+  INV_COOLDOWN_MIN_MS,
+  INV_COOLDOWN_STEP_MS,
+  parseInventoryCooldownMs,
+} from '../lib/inventoryScan'
 import { IconPencil, IconTrash, IconCopy, IconFlashlight } from './icons'
 
 const LS_CONTINUOUS = 'jan-sync-continuous-scan'
 const LS_DISPLAY = 'jan-sync-scanner-display'
 const LS_SCAN_SOUND = 'jan-sync-scan-sound'
+const LS_INVENTORY = 'jan-sync-inventory-mode'
+const LS_INV_TARGET = 'jan-sync-inventory-target'
+const LS_INV_COOLDOWN = 'jan-sync-inventory-cooldown-ms'
 
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
@@ -28,12 +38,27 @@ export default function Scanner(props: { listId: string }) {
   const [continuousScan, setContinuousScan] = createSignal(false)
   const [displayMode, setDisplayMode] = createSignal<'full' | 'compact'>('full')
   const [scanSoundEnabled, setScanSoundEnabled] = createSignal(true)
+  const [inventoryMode, setInventoryMode] = createSignal(false)
+  const [inventoryTarget, setInventoryTarget] = createSignal<InventoryTarget>('top')
+  const [inventoryCooldownMs, setInventoryCooldownMs] = createSignal(
+    parseInventoryCooldownMs(null),
+  )
+
+  /** 棚卸しON時: 同一JANの短時間連続読取を捨てる（クールダウン） */
+  let lastInventoryDecodeAt = 0
+  let lastInventoryDecodeJan = ''
+
+  function resetInventoryDecodeGate() {
+    lastInventoryDecodeAt = 0
+    lastInventoryDecodeJan = ''
+  }
 
   /** listId が変わったらカメラ停止・編集解除・履歴を差し替え */
   let listLoadGen = 0
   createEffect(() => {
     const listId = props.listId
     const gen = ++listLoadGen
+    resetInventoryDecodeGate()
     stopCamera()
     setEditingId('')
     setEditJan('')
@@ -131,7 +156,26 @@ export default function Scanner(props: { listId: string }) {
             { formats: ['EAN13', 'EAN8'], tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true },
           )
           if (results.length > 0) {
-            const added = await addItem(results[0].text)
+            const jan = results[0].text
+            let added = false
+            if (inventoryMode()) {
+              const cd = inventoryCooldownMs()
+              if (
+                cd > 0
+                && lastInventoryDecodeJan === jan
+                && Date.now() - lastInventoryDecodeAt < cd
+              ) {
+                added = false
+              } else {
+                added = await addItem(jan)
+                if (added) {
+                  lastInventoryDecodeAt = Date.now()
+                  lastInventoryDecodeJan = jan
+                }
+              }
+            } else {
+              added = await addItem(jan)
+            }
             if (added) {
               vibrateOnScanSuccess()
               playScanBeep(scanSoundEnabled())
@@ -151,10 +195,32 @@ export default function Scanner(props: { listId: string }) {
 
   // ── データ操作 ──────────────────────────────────────────
 
-  /** 保存して停止する場合 true。無効 JAN・先頭と重複のときは false（スキャン継続） */
+  /**
+   * 保存に成功したら true。
+   * 通常: 先頭と同一JANは false（個数で調整）。
+   * 棚卸し: 同一JANは個数+1、なければ新規行。
+   */
   async function addItem(jan: string): Promise<boolean> {
     if (!isValidJan(jan)) return false
-    if (items()[0]?.jan === jan) return false
+
+    if (inventoryMode()) {
+      if (inventoryTarget() === 'top') {
+        const top = items()[0]
+        if (top?.jan === jan) {
+          await updateField(top.id, { quantity: (top.quantity ?? 1) + 1 })
+          return true
+        }
+      } else {
+        const found = items().find((i) => i.jan === jan)
+        if (found) {
+          await updateField(found.id, { quantity: (found.quantity ?? 1) + 1 })
+          return true
+        }
+      }
+    } else if (items()[0]?.jan === jan) {
+      return false
+    }
+
     const item: ScannedItem = {
       id: crypto.randomUUID(),
       listId: props.listId,
@@ -256,11 +322,32 @@ export default function Scanner(props: { listId: string }) {
     } catch { /* ignore */ }
   }
 
+  function persistInventory(on: boolean) {
+    try {
+      localStorage.setItem(LS_INVENTORY, on ? '1' : '0')
+    } catch { /* ignore */ }
+  }
+
+  function persistInvTarget(t: InventoryTarget) {
+    try {
+      localStorage.setItem(LS_INV_TARGET, t)
+    } catch { /* ignore */ }
+  }
+
+  function persistInvCooldown(ms: number) {
+    try {
+      localStorage.setItem(LS_INV_COOLDOWN, String(ms))
+    } catch { /* ignore */ }
+  }
+
   onMount(() => {
     try {
       setContinuousScan(localStorage.getItem(LS_CONTINUOUS) === '1')
       setDisplayMode(localStorage.getItem(LS_DISPLAY) === 'compact' ? 'compact' : 'full')
       setScanSoundEnabled(localStorage.getItem(LS_SCAN_SOUND) !== '0')
+      setInventoryMode(localStorage.getItem(LS_INVENTORY) === '1')
+      setInventoryTarget(localStorage.getItem(LS_INV_TARGET) === 'list' ? 'list' : 'top')
+      setInventoryCooldownMs(parseInventoryCooldownMs(localStorage.getItem(LS_INV_COOLDOWN)))
     } catch { /* ignore */ }
 
     const onKey = (e: KeyboardEvent) => {
@@ -395,6 +482,95 @@ export default function Scanner(props: { listId: string }) {
             「JAN・個数」は同じ商品を数入力する場合に便利です。名前・価格は「すべて」で編集できます。
           </p>
         </div>
+      </div>
+
+      <div class="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm ring-1 ring-slate-900/5">
+        <span class="text-xs font-semibold text-slate-500">棚卸し</span>
+        <label class="flex cursor-pointer items-center justify-between gap-3 touch-manipulation">
+          <span class="text-sm font-medium text-slate-700">棚卸しモード</span>
+          <span class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={inventoryMode()}
+              onChange={(e) => {
+                const on = e.currentTarget.checked
+                setInventoryMode(on)
+                persistInventory(on)
+                resetInventoryDecodeGate()
+              }}
+              class="h-5 w-5 rounded border-slate-300 accent-blue-600"
+            />
+            <span class="text-xs text-slate-500">同一JANは個数を増やす</span>
+          </span>
+        </label>
+        <Show when={inventoryMode()}>
+          <div class="flex flex-col gap-3 border-l-2 border-amber-200/90 pl-3">
+            <div class="flex flex-col gap-1.5">
+              <span class="text-xs font-medium text-slate-500">個数を足す行</span>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryTarget('top')
+                    persistInvTarget('top')
+                    resetInventoryDecodeGate()
+                  }}
+                  class={`min-h-11 rounded-xl border px-2 text-xs font-semibold leading-snug shadow-sm touch-manipulation active:scale-[0.99] ${
+                    inventoryTarget() === 'top'
+                      ? 'border-amber-300 bg-amber-50 text-amber-900 ring-1 ring-amber-100'
+                      : 'border-slate-200 bg-slate-50/80 text-slate-600'
+                  }`}
+                >
+                  先頭行のみ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryTarget('list')
+                    persistInvTarget('list')
+                    resetInventoryDecodeGate()
+                  }}
+                  class={`min-h-11 rounded-xl border px-2 text-xs font-semibold leading-snug shadow-sm touch-manipulation active:scale-[0.99] ${
+                    inventoryTarget() === 'list'
+                      ? 'border-amber-300 bg-amber-50 text-amber-900 ring-1 ring-amber-100'
+                      : 'border-slate-200 bg-slate-50/80 text-slate-600'
+                  }`}
+                >
+                  リスト内の同一JAN
+                </button>
+              </div>
+              <p class="text-xs leading-relaxed text-slate-400">
+                「先頭」は直近の1件だけ。「リスト内」は履歴の先頭から探して最初に一致した行に加算します。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="text-xs font-medium text-slate-500">同一JANのクールダウン</span>
+                <span class="text-xs font-mono font-semibold text-slate-700">{inventoryCooldownMs()} ms</span>
+              </div>
+              <input
+                type="range"
+                min={INV_COOLDOWN_MIN_MS}
+                max={INV_COOLDOWN_MAX_MS}
+                step={INV_COOLDOWN_STEP_MS}
+                value={inventoryCooldownMs()}
+                onInput={(e) => {
+                  const v = parseInt(e.currentTarget.value, 10)
+                  setInventoryCooldownMs(v)
+                  persistInvCooldown(v)
+                  resetInventoryDecodeGate()
+                }}
+                class="w-full accent-amber-600 touch-manipulation"
+                aria-valuemin={INV_COOLDOWN_MIN_MS}
+                aria-valuemax={INV_COOLDOWN_MAX_MS}
+                aria-valuenow={inventoryCooldownMs()}
+              />
+              <p class="text-xs leading-relaxed text-slate-400">
+                連続スキャンで同じバーコードが短時間に何度も読まれたとき、2回目以降を無視します（{INV_COOLDOWN_MIN_MS}〜{INV_COOLDOWN_MAX_MS} ms）。
+              </p>
+            </div>
+          </div>
+        </Show>
       </div>
 
       {/* 履歴 */}
