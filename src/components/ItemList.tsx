@@ -3,6 +3,99 @@ import { type ScannedItem, type JanList, loadAllItems, removeItem, removeItems, 
 import { type CsvDelimiter, type CsvPreset, triggerExportDownload } from '../lib/csvExport'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
+type ExportMenuId = 'preset' | 'delimiter'
+
+const EXPORT_PRESET_OPTIONS: { value: CsvPreset; label: string }[] = [
+  { value: 'full', label: 'すべて（JAN・名前・個数・価格・リスト・日時）' },
+  { value: 'jan_name', label: 'JAN と名前のみ' },
+  { value: 'jan_only', label: 'JAN のみ' },
+]
+
+const EXPORT_DELIMITER_OPTIONS: { value: CsvDelimiter; label: string }[] = [
+  { value: 'comma', label: 'カンマ（.csv）' },
+  { value: 'tab', label: 'タブ（.tsv・Excel / WPS 向け）' },
+]
+
+interface ExportDropdownProps {
+  menuId: ExportMenuId
+  openMenu: () => ExportMenuId | null
+  setOpenMenu: (v: ExportMenuId | null) => void
+  fieldLabel: string
+  /** 現在値（親の signal から渡す） */
+  value: string
+  options: readonly { value: string; label: string }[]
+  onSelect: (value: string) => void
+}
+
+/** 一覧のエクスポート用カスタムドロップダウン（ネイティブ select 不使用） */
+function ExportDropdown(props: ExportDropdownProps) {
+  let root: HTMLDivElement | undefined
+
+  const isOpen = () => props.openMenu() === props.menuId
+  const currentLabel = () =>
+    props.options.find((o) => o.value === props.value)?.label ?? props.value
+
+  onMount(() => {
+    const onDocDown = (e: MouseEvent) => {
+      if (props.openMenu() !== props.menuId) return
+      const t = e.target as Node
+      if (root && !root.contains(t)) props.setOpenMenu(null)
+    }
+    document.addEventListener('mousedown', onDocDown, true)
+    onCleanup(() => document.removeEventListener('mousedown', onDocDown, true))
+  })
+
+  return (
+    <div ref={(el) => { root = el }} class="relative flex flex-col gap-1">
+      <span class="text-xs text-slate-500" id={`export-label-${props.menuId}`}>
+        {props.fieldLabel}
+      </span>
+      <button
+        type="button"
+        class="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-left text-sm font-medium text-slate-800 shadow-sm ring-slate-900/5 touch-manipulation active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen()}
+        aria-labelledby={`export-label-${props.menuId}`}
+        aria-controls={`export-listbox-${props.menuId}`}
+        onClick={() => props.setOpenMenu(isOpen() ? null : props.menuId)}
+      >
+        <span class="min-w-0 flex-1 truncate">{currentLabel()}</span>
+        <span class="shrink-0 text-slate-400" aria-hidden="true">
+          {isOpen() ? '▴' : '▾'}
+        </span>
+      </button>
+      <Show when={isOpen()}>
+        <div
+          id={`export-listbox-${props.menuId}`}
+          role="listbox"
+          class="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200/90 bg-white py-1 shadow-lg ring-1 ring-slate-900/10"
+        >
+          <For each={[...props.options]}>
+            {(opt) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={opt.value === props.value}
+                class={`w-full px-3 py-2.5 text-left text-sm touch-manipulation active:bg-slate-100/90 ${
+                  opt.value === props.value
+                    ? 'bg-blue-50/95 font-semibold text-blue-900'
+                    : 'text-slate-800 hover:bg-slate-50'
+                }`}
+                onClick={() => {
+                  props.onSelect(opt.value)
+                  props.setOpenMenu(null)
+                }}
+              >
+                {opt.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
 export default function ItemList(props: { lists: JanList[] }) {
   const [items, setItems] = createSignal<ScannedItem[]>([])
   const [query, setQuery] = createSignal('')
@@ -15,6 +108,7 @@ export default function ItemList(props: { lists: JanList[] }) {
   const [exportPreset, setExportPreset] = createSignal<CsvPreset>('full')
   const [exportExpandQty, setExportExpandQty] = createSignal(false)
   const [exportDelimiter, setExportDelimiter] = createSignal<CsvDelimiter>('comma')
+  const [openExportMenu, setOpenExportMenu] = createSignal<ExportMenuId | null>(null)
 
   function runExport() {
     triggerExportDownload(filtered(), listMap(), {
@@ -160,7 +254,8 @@ export default function ItemList(props: { lists: JanList[] }) {
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (bulkDeleteOpen()) setBulkDeleteOpen(false)
+      if (openExportMenu()) setOpenExportMenu(null)
+      else if (bulkDeleteOpen()) setBulkDeleteOpen(false)
       else if (pendingDeleteOneId()) setPendingDeleteOneId(null)
     }
     window.addEventListener('keydown', onKey)
@@ -175,50 +270,45 @@ export default function ItemList(props: { lists: JanList[] }) {
       </div>
 
       <div class="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm ring-1 ring-slate-900/5">
-          <span class="text-xs font-semibold text-slate-500">表計算へ出力</span>
-          <label class="flex flex-col gap-1">
-            <span class="text-xs text-slate-500">列のセット</span>
-            <select
-              value={exportPreset()}
-              onChange={(e) => setExportPreset(e.currentTarget.value as CsvPreset)}
-              class="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm font-medium text-slate-800"
-            >
-              <option value="full">すべて（JAN・名前・個数・価格・リスト・日時）</option>
-              <option value="jan_name">JAN と名前のみ</option>
-              <option value="jan_only">JAN のみ</option>
-            </select>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-slate-700 touch-manipulation">
-            <input
-              type="checkbox"
-              checked={exportExpandQty()}
-              onChange={(e) => setExportExpandQty(e.currentTarget.checked)}
-              class="h-4 w-4 rounded border-slate-300 accent-blue-600"
-            />
-            個数ぶん行を縦に展開（1行＝1個単位）
-          </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-xs text-slate-500">区切り文字</span>
-            <select
-              value={exportDelimiter()}
-              onChange={(e) => setExportDelimiter(e.currentTarget.value as CsvDelimiter)}
-              class="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm font-medium text-slate-800"
-            >
-              <option value="comma">カンマ（.csv）</option>
-              <option value="tab">タブ（.tsv・Excel / WPS 向け）</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={runExport}
-            disabled={filtered().length === 0}
-            class="min-h-11 w-full rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 active:scale-[0.99] disabled:opacity-40 touch-manipulation"
-          >
-            ダウンロード
-          </button>
-          <span class="text-xs leading-relaxed text-slate-400">
-            UTF-8（BOM付き）。Google スプレッドシートはインポートで指定可能です。
-          </span>
+        <span class="text-xs font-semibold text-slate-500">表計算へ出力</span>
+        <ExportDropdown
+          menuId="preset"
+          openMenu={openExportMenu}
+          setOpenMenu={setOpenExportMenu}
+          fieldLabel="列のセット"
+          value={exportPreset()}
+          options={EXPORT_PRESET_OPTIONS}
+          onSelect={(v) => setExportPreset(v as CsvPreset)}
+        />
+        <label class="flex items-center gap-2 text-sm text-slate-700 touch-manipulation">
+          <input
+            type="checkbox"
+            checked={exportExpandQty()}
+            onChange={(e) => setExportExpandQty(e.currentTarget.checked)}
+            class="h-4 w-4 rounded border-slate-300 accent-blue-600"
+          />
+          個数ぶん行を縦に展開（1行＝1個単位）
+        </label>
+        <ExportDropdown
+          menuId="delimiter"
+          openMenu={openExportMenu}
+          setOpenMenu={setOpenExportMenu}
+          fieldLabel="区切り文字"
+          value={exportDelimiter()}
+          options={EXPORT_DELIMITER_OPTIONS}
+          onSelect={(v) => setExportDelimiter(v as CsvDelimiter)}
+        />
+        <button
+          type="button"
+          onClick={runExport}
+          disabled={filtered().length === 0}
+          class="min-h-11 w-full rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 active:scale-[0.99] disabled:opacity-40 touch-manipulation"
+        >
+          ダウンロード
+        </button>
+        <span class="text-xs leading-relaxed text-slate-400">
+          UTF-8（BOM付き）。Google スプレッドシートはインポートで指定可能です。
+        </span>
       </div>
 
       <input
