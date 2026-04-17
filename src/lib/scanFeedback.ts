@@ -39,14 +39,14 @@ export function playScanBeep(soundOn: boolean): void {
     if (ctx.state === 'suspended') void ctx.resume()
 
     const t0 = ctx.currentTime
-    const dur = 0.07
+    const dur = 0.078
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
     osc.frequency.setValueAtTime(2000, t0)
 
-    /** 端末スピーカーでも分かりやすい音量（デスクトップではやや大きめ） */
-    const peak = 0.28
+    /** レジ寄りの聞き取りやすさ優先（端末のメディア音量に依存。0.5超は歪みやすい） */
+    const peak = 0.44
     gain.gain.setValueAtTime(0.0001, t0)
     gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
