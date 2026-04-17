@@ -5,8 +5,12 @@ import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 type ExportMenuId = 'preset' | 'delimiter'
 
-const EXPORT_PRESET_OPTIONS: { value: CsvPreset; label: string }[] = [
-  { value: 'full', label: 'すべて（JAN・名前・個数・価格・リスト・日時）' },
+const EXPORT_PRESET_OPTIONS: { value: CsvPreset; label: string; triggerLabel?: string }[] = [
+  {
+    value: 'full',
+    label: 'すべて（JAN・名前・個数・価格・リスト・日時）',
+    triggerLabel: 'すべての列',
+  },
   { value: 'jan_name', label: 'JAN と名前のみ' },
   { value: 'jan_only', label: 'JAN のみ' },
 ]
@@ -23,7 +27,7 @@ interface ExportDropdownProps {
   fieldLabel: string
   /** 現在値（親の signal から渡す） */
   value: string
-  options: readonly { value: string; label: string }[]
+  options: readonly { value: string; label: string; triggerLabel?: string }[]
   onSelect: (value: string) => void
 }
 
@@ -32,8 +36,13 @@ function ExportDropdown(props: ExportDropdownProps) {
   let root: HTMLDivElement | undefined
 
   const isOpen = () => props.openMenu() === props.menuId
-  const currentLabel = () =>
-    props.options.find((o) => o.value === props.value)?.label ?? props.value
+  const currentOption = () => props.options.find((o) => o.value === props.value)
+  /** 閉じたときのトリガー用（長い説明は triggerLabel で短縮） */
+  const currentTriggerText = () => {
+    const o = currentOption()
+    return o?.triggerLabel ?? o?.label ?? props.value
+  }
+  const currentTitle = () => currentOption()?.label ?? props.value
 
   onMount(() => {
     const onDocDown = (e: MouseEvent) => {
@@ -52,6 +61,7 @@ function ExportDropdown(props: ExportDropdownProps) {
       </span>
       <button
         type="button"
+        title={currentTitle()}
         class="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-left text-sm font-medium text-slate-800 shadow-sm ring-slate-900/5 touch-manipulation active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
         aria-haspopup="listbox"
         aria-expanded={isOpen()}
@@ -59,7 +69,7 @@ function ExportDropdown(props: ExportDropdownProps) {
         aria-controls={`export-listbox-${props.menuId}`}
         onClick={() => props.setOpenMenu(isOpen() ? null : props.menuId)}
       >
-        <span class="min-w-0 flex-1 truncate">{currentLabel()}</span>
+        <span class="min-w-0 flex-1 truncate">{currentTriggerText()}</span>
         <span class="shrink-0 text-slate-400" aria-hidden="true">
           {isOpen() ? '▴' : '▾'}
         </span>
