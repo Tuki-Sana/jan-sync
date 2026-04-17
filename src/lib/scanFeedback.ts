@@ -39,15 +39,16 @@ export function playScanBeep(soundOn: boolean): void {
     if (ctx.state === 'suspended') void ctx.resume()
 
     const t0 = ctx.currentTime
-    const dur = 0.055
+    const dur = 0.07
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
-    osc.frequency.setValueAtTime(1880, t0)
+    osc.frequency.setValueAtTime(2000, t0)
 
-    const peak = 0.09
+    /** 端末スピーカーでも分かりやすい音量（デスクトップではやや大きめ） */
+    const peak = 0.28
     gain.gain.setValueAtTime(0.0001, t0)
-    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012)
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
 
     osc.connect(gain)
@@ -59,17 +60,17 @@ export function playScanBeep(soundOn: boolean): void {
   }
 }
 
-/** 短い二連パルス（未対応時は単発にフォールバック） */
+/** 三連の長めパルス（小型端末でも感じやすい。未対応時は長め単発） */
 export function vibrateOnScanSuccess(): void {
   const v = navigator.vibrate?.bind(navigator)
   if (!v) return
   try {
-    const pattern = [36, 26, 36] as const
+    const pattern = [95, 42, 95, 42, 110] as const
     const ok = v([...pattern])
-    if (!ok) v(100)
+    if (!ok) v(220)
   } catch {
     try {
-      navigator.vibrate?.(100)
+      navigator.vibrate?.(220)
     } catch { /* ignore */ }
   }
 }
