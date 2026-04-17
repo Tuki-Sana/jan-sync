@@ -5,6 +5,9 @@ import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
 import { IconPencil, IconTrash, IconCopy, IconFlashlight } from './icons'
 
+const LS_CONTINUOUS = 'jan-sync-continuous-scan'
+const LS_DISPLAY = 'jan-sync-scanner-display'
+
 export default function Scanner(props: { listId: string }) {
   let videoRef: HTMLVideoElement | undefined
   let canvasRef: HTMLCanvasElement | undefined
@@ -20,6 +23,8 @@ export default function Scanner(props: { listId: string }) {
   const [editJan, setEditJan] = createSignal('')
   const [showClearConfirm, setShowClearConfirm] = createSignal(false)
   const [pendingDeleteItemId, setPendingDeleteItemId] = createSignal<string | null>(null)
+  const [continuousScan, setContinuousScan] = createSignal(false)
+  const [displayMode, setDisplayMode] = createSignal<'full' | 'compact'>('full')
 
   /** listId が変わったらカメラ停止・編集解除・履歴を差し替え */
   let listLoadGen = 0
@@ -124,7 +129,7 @@ export default function Scanner(props: { listId: string }) {
           if (results.length > 0) {
             navigator.vibrate?.(200)
             const added = await addItem(results[0].text)
-            if (added) {
+            if (added && !continuousScan()) {
               stopCamera()
               return
             }
@@ -223,7 +228,24 @@ export default function Scanner(props: { listId: string }) {
 
   onCleanup(() => stopCamera())
 
+  function persistContinuous(v: boolean) {
+    try {
+      localStorage.setItem(LS_CONTINUOUS, v ? '1' : '0')
+    } catch { /* プライベートモード等 */ }
+  }
+
+  function persistDisplay(mode: 'full' | 'compact') {
+    try {
+      localStorage.setItem(LS_DISPLAY, mode)
+    } catch { /* ignore */ }
+  }
+
   onMount(() => {
+    try {
+      setContinuousScan(localStorage.getItem(LS_CONTINUOUS) === '1')
+      setDisplayMode(localStorage.getItem(LS_DISPLAY) === 'compact' ? 'compact' : 'full')
+    } catch { /* ignore */ }
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (pendingDeleteItemId()) cancelDeleteOne()
@@ -279,6 +301,61 @@ export default function Scanner(props: { listId: string }) {
       >
         {scanning() ? 'スキャン停止' : 'スキャン開始'}
       </button>
+
+      <div class="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm ring-1 ring-slate-900/5">
+        <label class="flex cursor-pointer items-center justify-between gap-3 touch-manipulation">
+          <span class="text-sm font-medium text-slate-700">連続スキャン</span>
+          <span class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={continuousScan()}
+              onChange={(e) => {
+                const v = e.currentTarget.checked
+                setContinuousScan(v)
+                persistContinuous(v)
+              }}
+              class="h-5 w-5 rounded border-slate-300 accent-blue-600"
+            />
+            <span class="text-xs text-slate-500">読取後もカメラ継続</span>
+          </span>
+        </label>
+        <div class="flex flex-col gap-1.5">
+          <span class="text-xs font-medium text-slate-500">履歴の表示</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDisplayMode('full')
+                persistDisplay('full')
+              }}
+              class={`min-h-11 rounded-xl border px-2 text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
+                displayMode() === 'full'
+                  ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+                  : 'border-slate-200 bg-slate-50/80 text-slate-600'
+              }`}
+            >
+              すべて
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDisplayMode('compact')
+                persistDisplay('compact')
+              }}
+              class={`min-h-11 rounded-xl border px-2 text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
+                displayMode() === 'compact'
+                  ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+                  : 'border-slate-200 bg-slate-50/80 text-slate-600'
+              }`}
+            >
+              JAN・個数
+            </button>
+          </div>
+          <p class="text-xs leading-relaxed text-slate-400">
+            「JAN・個数」は同じ商品を数入力する場合に便利です。名前・価格は「すべて」で編集できます。
+          </p>
+        </div>
+      </div>
 
       {/* 履歴 */}
       <Show when={items().length > 0}>
@@ -364,13 +441,15 @@ export default function Scanner(props: { listId: string }) {
                 </Show>
 
                 {/* 名前 */}
-                <input
-                  type="text"
-                  placeholder="名前を追加..."
-                  value={item.name}
-                  onBlur={(e) => updateField(item.id, { name: e.currentTarget.value })}
-                  class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
-                />
+                <Show when={displayMode() === 'full'}>
+                  <input
+                    type="text"
+                    placeholder="名前を追加..."
+                    value={item.name}
+                    onBlur={(e) => updateField(item.id, { name: e.currentTarget.value })}
+                    class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                  />
+                </Show>
 
                 {/* 個数（ラベル位置・高さ・枠線を価格フィールドに合わせる） */}
                 <div class="flex flex-col gap-1">
@@ -405,53 +484,52 @@ export default function Scanner(props: { listId: string }) {
                   </div>
                 </div>
 
-                {/* 価格 */}
-                <div class="grid grid-cols-2 gap-3">
-                  {/* 定価 */}
-                  <div class="flex flex-col gap-1">
-                    <span class="text-xs font-medium text-slate-500">定価（税抜）</span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      placeholder="¥0"
-                      value={item.retailPrice ?? ''}
-                      onBlur={(e) => updateField(item.id, { retailPrice: parsePriceInput(e.currentTarget.value) })}
-                      class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
-                    />
-                    <Show when={item.retailPrice !== undefined}>
-                      <span class="text-xs text-slate-400">税込 ¥{taxIn(item.retailPrice!).toLocaleString()}</span>
-                    </Show>
+                {/* 価格・検索 */}
+                <Show when={displayMode() === 'full'}>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1">
+                      <span class="text-xs font-medium text-slate-500">定価（税抜）</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="¥0"
+                        value={item.retailPrice ?? ''}
+                        onBlur={(e) => updateField(item.id, { retailPrice: parsePriceInput(e.currentTarget.value) })}
+                        class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                      />
+                      <Show when={item.retailPrice !== undefined}>
+                        <span class="text-xs text-slate-400">税込 ¥{taxIn(item.retailPrice!).toLocaleString()}</span>
+                      </Show>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <span class="text-xs font-medium text-slate-500">売価（税抜）</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="¥0"
+                        value={item.salePrice ?? ''}
+                        onBlur={(e) => updateField(item.id, { salePrice: parsePriceInput(e.currentTarget.value) })}
+                        class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                      />
+                      <Show when={item.salePrice !== undefined}>
+                        <span class="text-xs text-slate-400">税込 ¥{taxIn(item.salePrice!).toLocaleString()}</span>
+                      </Show>
+                    </div>
                   </div>
-                  {/* 売価 */}
-                  <div class="flex flex-col gap-1">
-                    <span class="text-xs font-medium text-slate-500">売価（税抜）</span>
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      placeholder="¥0"
-                      value={item.salePrice ?? ''}
-                      onBlur={(e) => updateField(item.id, { salePrice: parsePriceInput(e.currentTarget.value) })}
-                      class="w-full min-h-12 rounded-xl border border-slate-200 px-3 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
-                    />
-                    <Show when={item.salePrice !== undefined}>
-                      <span class="text-xs text-slate-400">税込 ¥{taxIn(item.salePrice!).toLocaleString()}</span>
-                    </Show>
-                  </div>
-                </div>
 
-                {/* 検索 */}
-                <div class="flex w-full gap-2">
-                  <a
-                    href={`https://www.google.com/search?q=${item.jan}+${encodeURIComponent(item.name)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    class="flex-1 flex min-h-12 items-center justify-center rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm active:scale-95 active:bg-slate-50 transition-transform select-none touch-manipulation"
-                  >Google</a>
-                  <a
-                    href={`https://search.yahoo.co.jp/search?p=${item.jan}+${encodeURIComponent(item.name)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    class="flex-1 flex min-h-12 items-center justify-center rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm active:scale-95 active:bg-slate-50 transition-transform select-none touch-manipulation"
-                  >Yahoo!</a>
-                </div>
+                  <div class="flex w-full gap-2">
+                    <a
+                      href={`https://www.google.com/search?q=${item.jan}+${encodeURIComponent(item.name)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      class="flex-1 flex min-h-12 items-center justify-center rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm active:scale-95 active:bg-slate-50 transition-transform select-none touch-manipulation"
+                    >Google</a>
+                    <a
+                      href={`https://search.yahoo.co.jp/search?p=${item.jan}+${encodeURIComponent(item.name)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      class="flex-1 flex min-h-12 items-center justify-center rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm active:scale-95 active:bg-slate-50 transition-transform select-none touch-manipulation"
+                    >Yahoo!</a>
+                  </div>
+                </Show>
               </div>
             )}
           </For>

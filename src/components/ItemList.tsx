@@ -1,38 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { type ScannedItem, type JanList, loadAllItems, removeItem, removeItems, saveItem, taxIn } from '../lib/db'
+import { type CsvDelimiter, type CsvPreset, triggerExportDownload } from '../lib/csvExport'
 import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
-
-/** Excel 等での数式解釈を避ける（先頭が = + - @ のときタブを前置） */
-function csvCell(cell: string | number): string {
-  let s = String(cell)
-  if (/^[=+\-@]/.test(s)) s = `\t${s}`
-  return `"${s.replace(/"/g, '""')}"`
-}
-
-function exportCSV(items: ScannedItem[], listMap: Record<string, string>) {
-  const headers = ['JAN', '名前', '個数', 'リスト', '定価(税抜)', '定価(税込)', '売価(税抜)', '売価(税込)', 'スキャン日時']
-  const rows = items.map((i) => [
-    i.jan,
-    i.name,
-    i.quantity ?? 1,
-    listMap[i.listId] ?? '',
-    i.retailPrice ?? '',
-    i.retailPrice !== undefined ? taxIn(i.retailPrice) : '',
-    i.salePrice ?? '',
-    i.salePrice !== undefined ? taxIn(i.salePrice) : '',
-    formatDate(i.scannedAt),
-  ])
-  const csv = [headers, ...rows]
-    .map((row) => row.map(csvCell).join(','))
-    .join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `jan-sync-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 export default function ItemList(props: { lists: JanList[] }) {
   const [items, setItems] = createSignal<ScannedItem[]>([])
@@ -43,6 +12,17 @@ export default function ItemList(props: { lists: JanList[] }) {
   const [pendingDeleteOneId, setPendingDeleteOneId] = createSignal<string | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = createSignal(false)
   const [janDraft, setJanDraft] = createSignal('')
+  const [exportPreset, setExportPreset] = createSignal<CsvPreset>('full')
+  const [exportExpandQty, setExportExpandQty] = createSignal(false)
+  const [exportDelimiter, setExportDelimiter] = createSignal<CsvDelimiter>('comma')
+
+  function runExport() {
+    triggerExportDownload(filtered(), listMap(), {
+      preset: exportPreset(),
+      expandQuantity: exportExpandQty(),
+      delimiter: exportDelimiter(),
+    })
+  }
 
   /** 展開行が変わったときだけ JAN 下書きを同期（入力中に items の他フィールド更新で潰さない） */
   let prevExpandedId: string | null | undefined
@@ -189,19 +169,56 @@ export default function ItemList(props: { lists: JanList[] }) {
 
   return (
     <div class="flex flex-col gap-4 p-4">
-      <div class="flex items-center justify-between">
+      <div class="flex items-baseline justify-between gap-2">
         <h2 class="text-xl font-bold tracking-tight text-slate-800">一覧</h2>
-        <div class="flex items-center gap-3">
-          <span class="text-sm text-slate-400">全{items().length}件</span>
+        <span class="text-sm text-slate-400">全{items().length}件</span>
+      </div>
+
+      <div class="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm ring-1 ring-slate-900/5">
+          <span class="text-xs font-semibold text-slate-500">表計算へ出力</span>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-slate-500">列のセット</span>
+            <select
+              value={exportPreset()}
+              onChange={(e) => setExportPreset(e.currentTarget.value as CsvPreset)}
+              class="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm font-medium text-slate-800"
+            >
+              <option value="full">すべて（JAN・名前・個数・価格・リスト・日時）</option>
+              <option value="jan_name">JAN と名前のみ</option>
+              <option value="jan_only">JAN のみ</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-700 touch-manipulation">
+            <input
+              type="checkbox"
+              checked={exportExpandQty()}
+              onChange={(e) => setExportExpandQty(e.currentTarget.checked)}
+              class="h-4 w-4 rounded border-slate-300 accent-blue-600"
+            />
+            個数ぶん行を縦に展開（1行＝1個単位）
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-slate-500">区切り文字</span>
+            <select
+              value={exportDelimiter()}
+              onChange={(e) => setExportDelimiter(e.currentTarget.value as CsvDelimiter)}
+              class="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm font-medium text-slate-800"
+            >
+              <option value="comma">カンマ（.csv）</option>
+              <option value="tab">タブ（.tsv・Excel / WPS 向け）</option>
+            </select>
+          </label>
           <button
             type="button"
-            onClick={() => exportCSV(filtered(), listMap())}
+            onClick={runExport}
             disabled={filtered().length === 0}
-            class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm active:bg-slate-50 disabled:opacity-40 touch-manipulation"
+            class="min-h-11 w-full rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 active:scale-[0.99] disabled:opacity-40 touch-manipulation"
           >
-            CSV出力
+            ダウンロード
           </button>
-        </div>
+          <span class="text-xs leading-relaxed text-slate-400">
+            UTF-8（BOM付き）。Google スプレッドシートはインポートで指定可能です。
+          </span>
       </div>
 
       <input
