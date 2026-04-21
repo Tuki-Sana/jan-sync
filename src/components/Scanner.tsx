@@ -363,6 +363,10 @@ export default function Scanner(props: { listId: string }) {
     }
     window.addEventListener('keydown', onKey)
     onCleanup(() => window.removeEventListener('keydown', onKey))
+
+    const onVisibilityChange = () => { if (document.hidden) stopCamera() }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    onCleanup(() => document.removeEventListener('visibilitychange', onVisibilityChange))
   })
 
   return (
