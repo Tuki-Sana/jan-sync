@@ -555,7 +555,7 @@ export default function Scanner(props: { listId: string }) {
             </div>
             <div class="flex flex-col gap-2">
               <div class="flex items-baseline justify-between gap-2">
-                <span class="text-xs font-medium text-slate-500">同一JANのクールダウン</span>
+                <span class="text-xs font-medium text-slate-500">重複読取りの防止時間</span>
                 <span class="text-xs font-mono font-semibold text-slate-700">{inventoryCooldownMs()} ms</span>
               </div>
               <input
