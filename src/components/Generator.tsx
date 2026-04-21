@@ -274,7 +274,10 @@ export default function Generator(props: { listId: string }) {
           {/* 複数モード */}
           <Show when={multiManual()}>
             <div class="flex flex-col gap-1">
-              <label class="text-sm font-medium text-slate-600">1行に1コード入力</label>
+              <label class="text-sm font-medium text-slate-600 flex items-baseline gap-2">
+                1行に1コード入力
+                <span class="text-[11px] font-normal text-slate-400">（改行で何個でも追加可能）</span>
+              </label>
               <textarea
                 value={multiText()}
                 onInput={(e) => setMultiText(e.currentTarget.value)}

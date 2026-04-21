@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>JAN Sync 利用マニュアル</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+  
+  /* プリント時のA4設定 */
+  @page { 
+    size: A4 portrait; 
+    margin: 6mm; /* プリンタによるフチ欠けを防ぐ */
+  }
+  
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1f2937;
+    margin: 0;
+    padding: 0;
+    background: #e5e7eb;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* --- ページコンテナ（A4版型） --- */
+  .container {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+  }
+  
+  /* 画面でのプレビュー用 */
+  @media screen {
+    .container {
+      width: 210mm;
+      height: 297mm;
+      margin: 20px auto;
+      padding: 12mm;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+  }
+
+  /* 実際の印刷時のスタイル */
+  @media print {
+    body { background: #fff; }
+    .container {
+      width: 100%;
+      height: 285mm; /* A4の全高からマージンを引いた安全な高さ */
+      padding: 5mm;
+      margin: 0;
+      box-shadow: none;
+    }
+  }
+  
+  /* --- ヘッダー領域 --- */
+  header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 3px solid #1e3a8a;
+    padding-bottom: 12px;
+    margin-bottom: 24px; /* ヘッダーとコンテンツの間に明確な余白 */
+  }
+  
+  .header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .title-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  
+  h1 { 
+    margin: 0; 
+    font-size: 28px; 
+    font-weight: 800;
+    color: #111827; 
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  
+  .guide-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #4b5563;
+    background: #f3f4f6;
+    padding: 3px 8px;
+    border-radius: 4px;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  
+  .catchphrase { 
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e40af; 
+    margin: 0;
+  }
+  
+  .access-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  
+  .access-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  
+  .access-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 2px;
+  }
+  
+  .access-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  
+  .qr-code { 
+    width: 60px; 
+    height: 60px; 
+    display: block;
+    mix-blend-mode: multiply;
+  }
+  
+  /* --- 中段カード（メインコンテンツ） --- */
+  .instruction-cards {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 28px; /* カード群とフッターの間に明確なセクション余白 */
+    flex: 1; /* 残りの高さをカード群自体が占有し、カードを自然に下まで伸ばす */
+    align-items: stretch;
+  }
+  
+  .card {
+    flex: 1;
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 12px; /* パディングをゆったりとる */
+    text-align: center;
+    border: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    page-break-inside: avoid;
+  }
+  
+  .card h2 {
+    font-size: 14px;
+    margin: 0 0 16px 0; /* 見出しと画像の距離を取る */
+    color: #1e40af;
+    background: #dbeafe;
+    border-radius: 6px;
+    padding: 6px;
+    border: 1px solid #bfdbfe;
+  }
+  
+  .mockup {
+    width: 100%;
+    max-width: 135px; /* ★画像をドカッと大きくして紙面を占有させる。これがポスターデザインの肝 */
+    margin: 0 auto 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  }
+  
+  .mockup img {
+    width: 100%;
+    display: block;
+  }
+  
+  .card-text {
+    text-align: left;
+    font-size: 11.5px;
+    color: #374151;
+    line-height: 1.5; /* モダンで読みやすい行間 */
+  }
+  
+  .card-text ul {
+    padding-left: 16px;
+    margin: 0;
+  }
+  
+  .card-text li {
+    margin-bottom: 6px; /* リスト間も少しゆったりと */
+  }
+
+  /* --- フッター領域 --- */
+  .footer-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    page-break-inside: avoid;
+    flex-shrink: 0; /* フッターは縮まない */
+  }
+  
+  .footer-block {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  
+  .footer-block.important {
+    border-color: #f59e0b;
+    background: #fffbeb;
+  }
+  
+  .footer-block.warning {
+    border-color: #f87171;
+    background: #fef2f2;
+  }
+  
+  .footer-block-left {
+    flex: 0 0 38%;
+  }
+
+  .footer-block-right {
+    flex: 1;
+  }
+  
+  .footer-block h3 { 
+    margin: 0 0 4px 0; 
+    font-size: 13px; 
+    color: #111827;
+  }
+  
+  .footer-block.important h3 {
+    color: #b45309;
+  }
+
+  .footer-block.warning h3 {
+    color: #991b1b;
+  }
+  
+  .footer-block p { 
+    margin: 0; 
+    font-size: 11px; 
+    line-height: 1.4;
+  }
+  
+  .footer-block ul { 
+    margin: 0; 
+    padding-left: 16px; 
+    font-size: 11px; 
+    line-height: 1.4;
+  }
+  
+  .footer-block li {
+    margin-bottom: 4px;
+  }
+  
+  .footer-block li:last-child {
+    margin-bottom: 0;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-left">
+      <div class="title-wrapper">
+        <h1>JAN Sync</h1>
+        <span class="guide-label">導入ガイド</span>
+      </div>
+      <p class="catchphrase">オフラインでサクサク動く、現場特化型スキャン＆在庫管理ツール</p>
+    </div>
+    <div class="access-box">
+      <div class="access-info">
+        <span class="access-label">スマホでアクセス ▼</span>
+        <span class="access-url">jan-sync.pages.dev</span>
+      </div>
+      <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://jan-sync.pages.dev" alt="QRコード">
+    </div>
+  </header>
+
+  <div class="instruction-cards">
+    <!-- スキャン画面 -->
+    <div class="card">
+      <h2>1. リスト作成 ＆ スキャン</h2>
+      <div class="mockup"><img src="./images/01_scan_tab.png" alt="スキャン画面"></div>
+      <div class="card-text">
+        <ul>
+          <li>画面右上の「<strong>＋ 新規</strong>」から作業向けリストを作成します。</li>
+          <li>バーコードを写し数量や価格を保存します。(保存後も履歴から修正可能)</li>
+          <li><strong>【小技】</strong>商品名に「Amazon」等と入力し<strong>Google / Yahooボタン</strong>を押すと相場検索に便利です。</li>
+          <li style="margin-top: 6px;">
+            <strong>便利なスキャン設定</strong> (画面上で切替):
+             <ul style="padding-left: 15px; font-size: 11px; margin-top: 4px;">
+               <li><strong>連続スキャン</strong>: 確認画面を出さずに次々読み取る</li>
+               <li><strong>棚卸しモード</strong>: 同一商品を連続読込で自動加算</li>
+             </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 一覧画面 -->
+    <div class="card">
+      <h2>2. データ一覧・出力</h2>
+      <div class="mockup"><img src="./images/02_list_tab.png" alt="一覧画面"></div>
+      <div class="card-text">
+        <ul>
+          <li>一覧表示、検索、<strong>タップでの内容修正</strong>や「<strong>一括削除</strong>」が可能です。</li>
+          <li style="margin-top: 6px;">
+            <strong>データ出力設定</strong> (CSV / TSV対応):
+             <ul style="padding-left: 14px; font-size: 10.5px; margin-top: 4px;">
+               <li>JANの0落ちを防ぐ<strong>TSV出力</strong>を推奨</li>
+               <li>用途に応じて<strong>出力される列</strong>の選択が可能</li>
+               <li><strong>「個数を行展開」</strong>(1個につき1行出力)機能</li>
+             </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 生成画面 -->
+    <div class="card">
+      <h2>3. バーコード一括生成</h2>
+      <div class="mockup"><img src="./images/03_generator_tab.png" alt="生成画面"></div>
+      <div class="card-text">
+        <ul>
+          <li>保存したリストを選んで、一覧形式で商品のバーコードを画面上に一括出力できます。</li>
+          <li>棚のラベル生成やバックヤードでの確認用としてご活用ください。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-blocks">
+    <div class="footer-block important">
+      <div class="footer-block-left">
+        <h3>【必須】ホーム画面に追加（重要）</h3>
+        <p>通常のアプリと同じようにフルスクリーン・オフラインで使うため、<strong>必ず最初に追加設定</strong>を行ってください。</p>
+      </div>
+      <div class="footer-block-right">
+        <ul>
+          <li><strong>iPhone (Safari)</strong>: 画面下部の「共有ボタン(矢印アイコン)」 →「ホーム画面に追加」</li>
+          <li><strong>Android (Chrome)</strong>: 画面右上の「メニュー(︙)」 →「ホーム画面に追加」</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-block warning">
+      <div class="footer-block-left">
+        <h3>【注意】データの保存場所について</h3>
+        <p>サーバー送信や情報漏洩の心配はありませんが、以下の点にご注意ください。</p>
+      </div>
+      <div class="footer-block-right">
+        <ul>
+          <li>データは<strong>お使いのスマホ本体内にのみ保存</strong>されます。</li>
+          <li>スマホの紛失や、ブラウザの完全なキャッシュ削除を行うと<strong>データが完全に消去</strong>されます。こまめなCSV/TSVバックアップをお願いします。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

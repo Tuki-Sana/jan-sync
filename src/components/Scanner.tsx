@@ -87,6 +87,12 @@ export default function Scanner(props: { listId: string }) {
         if (track && typeof track.getCapabilities === 'function') {
           const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean }
           setTorchSupported(!!capabilities.torch)
+          // 前回のライト点灯状態がOS側に残っているバグを防ぐため明示的にOFFを強制
+          if (capabilities.torch) {
+            try {
+              await track.applyConstraints({ advanced: [{ torch: false } as MediaTrackConstraintSet] })
+            } catch (e) { /* ignore */ }
+          }
         }
         setScanning(true)
         scheduleFrame()
