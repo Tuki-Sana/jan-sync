@@ -4,6 +4,9 @@
  * iOS 向けに、ユーザー操作のコールスタック内で primeScanAudio を呼ぶこと。
  */
 
+export type SoundLevel = 'off' | 'low' | 'med' | 'high'
+export type VibrateLevel = 'off' | 'low' | 'med' | 'high'
+
 let sharedCtx: AudioContext | null = null
 
 function getAudioContextClass(): (typeof AudioContext) | null {
@@ -30,9 +33,16 @@ export function primeScanAudio(): void {
   }
 }
 
-/** 成功時の短いビープ（soundOn が false なら何もしない） */
-export function playScanBeep(soundOn: boolean): void {
-  if (!soundOn) return
+/** 基音と2倍音のゲインピーク [基音, 倍音] — レベル別 */
+const SOUND_PEAKS: Record<Exclude<SoundLevel, 'off'>, [number, number]> = {
+  low:  [0.15, 0.035],
+  med:  [0.48, 0.11],
+  high: [0.85, 0.20],
+}
+
+/** 成功時の短いビープ（off なら何もしない） */
+export function playScanBeep(level: SoundLevel): void {
+  if (level === 'off') return
   try {
     primeScanAudio()
     const ctx = sharedCtx
@@ -42,13 +52,13 @@ export function playScanBeep(soundOn: boolean): void {
     const t0 = ctx.currentTime
     const dur = 0.086
     const dest = ctx.destination
+    const [peak, hPeak] = SOUND_PEAKS[level]
 
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
     osc.frequency.setValueAtTime(1960, t0)
     /** 基音（メディア音量を下げても埋もれにくいようやや強め） */
-    const peak = 0.48
     gain.gain.setValueAtTime(0.0001, t0)
     gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.007)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
@@ -60,7 +70,6 @@ export function playScanBeep(soundOn: boolean): void {
     const gainH = ctx.createGain()
     oscH.type = 'sine'
     oscH.frequency.setValueAtTime(3920, t0)
-    const hPeak = 0.11
     gainH.gain.setValueAtTime(0.0001, t0)
     gainH.gain.exponentialRampToValueAtTime(hPeak, t0 + 0.005)
     gainH.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 0.88)
@@ -76,13 +85,20 @@ export function playScanBeep(soundOn: boolean): void {
   }
 }
 
-/** 三連の長めパルス（小型端末でも感じやすい。未対応時は長め単発） */
-export function vibrateOnScanSuccess(): void {
+/** バイブパターン [パルス長, 間隔, ...] — レベル別 */
+const VIBRATE_PATTERNS: Record<Exclude<VibrateLevel, 'off'>, number[]> = {
+  low:  [55],
+  med:  [95, 42, 95, 42, 110],
+  high: [130, 35, 130, 35, 160],
+}
+
+/** バイブ（off なら何もしない。未対応時は長め単発にフォールバック） */
+export function vibrateOnScanSuccess(level: VibrateLevel): void {
+  if (level === 'off') return
   const v = navigator.vibrate?.bind(navigator)
   if (!v) return
   try {
-    const pattern = [95, 42, 95, 42, 110] as const
-    const ok = v([...pattern])
+    const ok = v(VIBRATE_PATTERNS[level])
     if (!ok) v(220)
   } catch {
     try {

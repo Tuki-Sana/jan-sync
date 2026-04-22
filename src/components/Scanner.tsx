@@ -3,7 +3,8 @@ import { formatDate, isValidJan, parsePriceInput } from '../lib/utils'
 
 import { readBarcodes } from 'zxing-wasm/reader'
 import { type ScannedItem, loadByList, saveItem, removeItem, clearByList, taxIn } from '../lib/db'
-import { disposeScanAudio, playScanBeep, primeScanAudio, vibrateOnScanSuccess } from '../lib/scanFeedback'
+import { disposeScanAudio, playScanBeep, primeScanAudio, vibrateOnScanSuccess, type SoundLevel, type VibrateLevel } from '../lib/scanFeedback'
+import { soundLevel, setSoundLevel, vibrateLevel, setVibrateLevel } from '../lib/scanFeedbackStore'
 import {
   type InventoryTarget,
   INV_COOLDOWN_MAX_MS,
@@ -11,12 +12,16 @@ import {
   INV_COOLDOWN_STEP_MS,
   parseInventoryCooldownMs,
 } from '../lib/inventoryScan'
-import { IconPencil, IconTrash, IconCopy, IconFlashlight } from './icons'
+import { IconPencil, IconTrash, IconCopy, IconFlashlight, IconSettings } from './icons'
 
 const LS_CONTINUOUS = 'jan-sync-continuous-scan'
 const LS_DISPLAY = 'jan-sync-scanner-display'
-const LS_SCAN_SOUND = 'jan-sync-scan-sound'
 const LS_INVENTORY = 'jan-sync-inventory-mode'
+
+const SOUND_LEVELS: SoundLevel[] = ['off', 'low', 'med', 'high']
+const VIBRATE_LEVELS: VibrateLevel[] = ['off', 'low', 'med', 'high']
+const SOUND_LABELS: Record<SoundLevel, string> = { off: '無', low: '小', med: '中', high: '大' }
+const VIBRATE_LABELS: Record<VibrateLevel, string> = { off: '無', low: '弱', med: '中', high: '強' }
 const LS_INV_TARGET = 'jan-sync-inventory-target'
 const LS_INV_COOLDOWN = 'jan-sync-inventory-cooldown-ms'
 
@@ -37,7 +42,7 @@ export default function Scanner(props: { listId: string }) {
   const [pendingDeleteItemId, setPendingDeleteItemId] = createSignal<string | null>(null)
   const [continuousScan, setContinuousScan] = createSignal(false)
   const [displayMode, setDisplayMode] = createSignal<'full' | 'compact'>('full')
-  const [scanSoundEnabled, setScanSoundEnabled] = createSignal(true)
+  const [showFeedbackSettings, setShowFeedbackSettings] = createSignal(false)
   const [inventoryMode, setInventoryMode] = createSignal(false)
   const [inventoryTarget, setInventoryTarget] = createSignal<InventoryTarget>('top')
   const [inventoryCooldownMs, setInventoryCooldownMs] = createSignal(
@@ -183,8 +188,8 @@ export default function Scanner(props: { listId: string }) {
               added = await addItem(jan)
             }
             if (added) {
-              vibrateOnScanSuccess()
-              playScanBeep(scanSoundEnabled())
+              vibrateOnScanSuccess(vibrateLevel())
+              playScanBeep(soundLevel())
               if (!continuousScan()) {
                 stopCamera()
                 return
@@ -322,12 +327,6 @@ export default function Scanner(props: { listId: string }) {
     } catch { /* ignore */ }
   }
 
-  function persistScanSound(on: boolean) {
-    try {
-      localStorage.setItem(LS_SCAN_SOUND, on ? '1' : '0')
-    } catch { /* ignore */ }
-  }
-
   function persistInventory(on: boolean) {
     try {
       localStorage.setItem(LS_INVENTORY, on ? '1' : '0')
@@ -350,7 +349,6 @@ export default function Scanner(props: { listId: string }) {
     try {
       setContinuousScan(localStorage.getItem(LS_CONTINUOUS) === '1')
       setDisplayMode(localStorage.getItem(LS_DISPLAY) === 'compact' ? 'compact' : 'full')
-      setScanSoundEnabled(localStorage.getItem(LS_SCAN_SOUND) !== '0')
       setInventoryMode(localStorage.getItem(LS_INVENTORY) === '1')
       setInventoryTarget(localStorage.getItem(LS_INV_TARGET) === 'list' ? 'list' : 'top')
       setInventoryCooldownMs(parseInventoryCooldownMs(localStorage.getItem(LS_INV_COOLDOWN)))
@@ -360,6 +358,7 @@ export default function Scanner(props: { listId: string }) {
       if (e.key !== 'Escape') return
       if (pendingDeleteItemId()) cancelDeleteOne()
       else if (showClearConfirm()) cancelClearAll()
+      else if (showFeedbackSettings()) setShowFeedbackSettings(false)
     }
     window.addEventListener('keydown', onKey)
     onCleanup(() => window.removeEventListener('keydown', onKey))
@@ -439,23 +438,17 @@ export default function Scanner(props: { listId: string }) {
             <span class="text-xs text-slate-500">読取後もカメラ継続</span>
           </span>
         </label>
-        <label class="flex cursor-pointer items-center justify-between gap-3 touch-manipulation">
-          <span class="text-sm font-medium text-slate-700">スキャン音</span>
-          <span class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={scanSoundEnabled()}
-              onChange={(e) => {
-                const on = e.currentTarget.checked
-                if (on) primeScanAudio()
-                setScanSoundEnabled(on)
-                persistScanSound(on)
-              }}
-              class="h-5 w-5 rounded border-slate-300 accent-blue-600"
-            />
-            <span class="text-xs text-slate-500">成功時の短い音（iOSは開始タップで解除）</span>
-          </span>
-        </label>
+        <div class="flex items-center justify-between gap-3">
+          <span class="text-sm font-medium text-slate-700">スキャン音・バイブ</span>
+          <button
+            type="button"
+            onClick={() => setShowFeedbackSettings(true)}
+            class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm active:bg-slate-100 touch-manipulation"
+          >
+            <span>音:{SOUND_LABELS[soundLevel()]} · バイブ:{VIBRATE_LABELS[vibrateLevel()]}</span>
+            <IconSettings class="h-3.5 w-3.5 text-slate-400" />
+          </button>
+        </div>
         <div class="flex flex-col gap-1.5">
           <span class="text-xs font-medium text-slate-500">履歴の表示</span>
           <div class="grid grid-cols-2 gap-2">
@@ -850,6 +843,80 @@ export default function Scanner(props: { listId: string }) {
                 すべて削除する
               </button>
             </div>
+          </div>
+        </div>
+      </Show>
+      {/* スキャン音・バイブ設定モーダル */}
+      <Show when={showFeedbackSettings()}>
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            class="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px]"
+            aria-label="閉じる"
+            onClick={() => setShowFeedbackSettings(false)}
+          />
+          <div
+            class="relative z-[61] w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-slate-900/10"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="feedback-settings-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="feedback-settings-title" class="text-lg font-bold text-slate-800">スキャン音・バイブ</h3>
+
+            <div class="mt-4 flex flex-col gap-2">
+              <span class="text-sm font-medium text-slate-700">スキャン音</span>
+              <div class="grid grid-cols-4 gap-1.5">
+                <For each={SOUND_LEVELS}>
+                  {(level) => (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (level !== 'off' && soundLevel() === 'off') primeScanAudio()
+                        setSoundLevel(level)
+                      }}
+                      class={`min-h-10 rounded-xl border text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
+                        soundLevel() === level
+                          ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+                          : 'border-slate-200 bg-slate-50/80 text-slate-600'
+                      }`}
+                    >
+                      {SOUND_LABELS[level]}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <p class="text-xs text-slate-400">全体の大きさは端末の音量ボタンで変えられます</p>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-2">
+              <span class="text-sm font-medium text-slate-700">バイブ</span>
+              <div class="grid grid-cols-4 gap-1.5">
+                <For each={VIBRATE_LEVELS}>
+                  {(level) => (
+                    <button
+                      type="button"
+                      onClick={() => setVibrateLevel(level)}
+                      class={`min-h-10 rounded-xl border text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
+                        vibrateLevel() === level
+                          ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+                          : 'border-slate-200 bg-slate-50/80 text-slate-600'
+                      }`}
+                    >
+                      {VIBRATE_LABELS[level]}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="mt-5 w-full min-h-12 rounded-xl border-2 border-slate-200 bg-white text-base font-semibold text-slate-700 shadow-sm active:scale-[0.99] transition-transform touch-manipulation"
+              onClick={() => setShowFeedbackSettings(false)}
+            >
+              閉じる
+            </button>
           </div>
         </div>
       </Show>
