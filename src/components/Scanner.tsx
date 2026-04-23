@@ -22,6 +22,7 @@ const SOUND_LEVELS: SoundLevel[] = ['off', 'low', 'med', 'high']
 const VIBRATE_LEVELS: VibrateLevel[] = ['off', 'low', 'med', 'high']
 const SOUND_LABELS: Record<SoundLevel, string> = { off: '無', low: '小', med: '中', high: '大' }
 const VIBRATE_LABELS: Record<VibrateLevel, string> = { off: '無', low: '弱', med: '中', high: '強' }
+const vibrateSupported = typeof navigator.vibrate === 'function'
 const LS_INV_TARGET = 'jan-sync-inventory-target'
 const LS_INV_COOLDOWN = 'jan-sync-inventory-cooldown-ms'
 
@@ -445,7 +446,7 @@ export default function Scanner(props: { listId: string }) {
             onClick={() => setShowFeedbackSettings(true)}
             class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm active:bg-slate-100 touch-manipulation"
           >
-            <span>音:{SOUND_LABELS[soundLevel()]} · バイブ:{VIBRATE_LABELS[vibrateLevel()]}</span>
+            <span>音:{SOUND_LABELS[soundLevel()]}{vibrateSupported ? ` · バイブ:${VIBRATE_LABELS[vibrateLevel()]}` : ''}</span>
             <IconSettings class="h-3.5 w-3.5 text-slate-400" />
           </button>
         </div>
@@ -889,26 +890,28 @@ export default function Scanner(props: { listId: string }) {
               <p class="text-xs text-slate-400">全体の大きさは端末の音量ボタンで変えられます</p>
             </div>
 
-            <div class="mt-4 flex flex-col gap-2">
-              <span class="text-sm font-medium text-slate-700">バイブ</span>
-              <div class="grid grid-cols-4 gap-1.5">
-                <For each={VIBRATE_LEVELS}>
-                  {(level) => (
-                    <button
-                      type="button"
-                      onClick={() => setVibrateLevel(level)}
-                      class={`min-h-10 rounded-xl border text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
-                        vibrateLevel() === level
-                          ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
-                          : 'border-slate-200 bg-slate-50/80 text-slate-600'
-                      }`}
-                    >
-                      {VIBRATE_LABELS[level]}
-                    </button>
-                  )}
-                </For>
+            <Show when={vibrateSupported}>
+              <div class="mt-4 flex flex-col gap-2">
+                <span class="text-sm font-medium text-slate-700">バイブ</span>
+                <div class="grid grid-cols-4 gap-1.5">
+                  <For each={VIBRATE_LEVELS}>
+                    {(level) => (
+                      <button
+                        type="button"
+                        onClick={() => setVibrateLevel(level)}
+                        class={`min-h-10 rounded-xl border text-sm font-semibold shadow-sm touch-manipulation active:scale-[0.99] ${
+                          vibrateLevel() === level
+                            ? 'border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-100'
+                            : 'border-slate-200 bg-slate-50/80 text-slate-600'
+                        }`}
+                      >
+                        {VIBRATE_LABELS[level]}
+                      </button>
+                    )}
+                  </For>
+                </div>
               </div>
-            </div>
+            </Show>
 
             <button
               type="button"
