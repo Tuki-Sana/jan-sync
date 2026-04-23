@@ -2,8 +2,8 @@
 export type InventoryTarget = 'top' | 'list'
 
 export const INV_COOLDOWN_MIN_MS = 50
-export const INV_COOLDOWN_MAX_MS = 500
-export const INV_COOLDOWN_DEFAULT_MS = 200
+export const INV_COOLDOWN_MAX_MS = 2000
+export const INV_COOLDOWN_DEFAULT_MS = 500
 export const INV_COOLDOWN_STEP_MS = 50
 
 export function clampInventoryCooldownMs(ms: number): number {
