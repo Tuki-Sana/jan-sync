@@ -8,11 +8,11 @@
 
 ---
 
-## 📖 マニュアル（使い方）
+## マニュアル（使い方）
 
 アプリの詳細な操作手順やTipsについては、以下のA4印刷対応マニュアルをご覧ください。
 
-👉 **[JAN Sync 利用マニュアル (PDF) をダウンロード・閲覧する](./docs/app_manual/jan-sync-manual.pdf)**
+**[JAN Sync 利用マニュアル (PDF) をダウンロード・閲覧する](./docs/app_manual/jan-sync-manual.pdf)**
 
 ---
 
